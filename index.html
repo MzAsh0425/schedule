@@ -142,6 +142,7 @@
         </span>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script type="module">
         // -----------------------------------------------------
         // ▼▼▼ firebaseConfig をここに貼り付けてください ▼▼▼
@@ -174,12 +175,36 @@
         const memoInput = document.getElementById('eventMemo'); 
         const loadingOverlay = document.getElementById('loadingOverlay');
 
+        // --- 暗号化ユーティリティ ---
+        function generateKey() {
+            const arr = new Uint8Array(32);
+            crypto.getRandomValues(arr);
+            return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function encrypt(text, key) {
+            if (!text) return '';
+            return CryptoJS.AES.encrypt(text, key).toString();
+        }
+        function decrypt(cipherText, key) {
+            if (!cipherText) return '';
+            try {
+                const bytes = CryptoJS.AES.decrypt(cipherText, key);
+                return bytes.toString(CryptoJS.enc.Utf8);
+            } catch (e) { return cipherText; }
+        }
+        function getKeyFromHash() {
+            const hash = window.location.hash;
+            const match = hash.match(/key=([^&]+)/);
+            return match ? match[1] : null;
+        }
+
         // URLパラメータ判定
         const urlParams = new URLSearchParams(window.location.search);
         const eventId = urlParams.get('id');
         const mode = urlParams.get('mode');
+        let encryptionKey = getKeyFromHash() || null;
 
-        let candidates = []; 
+        let candidates = [];
 
         // 初期化
         const startSel = document.getElementById('inputStart');
@@ -196,7 +221,7 @@
             if (mode === 'edit') {
                 initEditMode();
             } else {
-                // 回答ページ(event.html)へ転送
+                // 回答ページ(event.html)へ転送（ハッシュも引き継ぐ）
                 const currentUrl = window.location.href;
                 window.location.replace(currentUrl.replace('index.html', 'event.html'));
             }
@@ -219,8 +244,13 @@
 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    titleInput.value = data.title;
-                    memoInput.value = data.memo || ""; 
+                    if (encryptionKey) {
+                        titleInput.value = decrypt(data.title, encryptionKey);
+                        memoInput.value = decrypt(data.memo || '', encryptionKey);
+                    } else {
+                        titleInput.value = data.title;
+                        memoInput.value = data.memo || "";
+                    }
                     candidates = data.candidates || [];
                     renderList();
                     renderPreview();
@@ -321,12 +351,20 @@
             btnCreate.innerText = "処理中...";
 
             try {
+                // 新規作成時に暗号鍵を生成
+                if (!eventId && !encryptionKey) {
+                    encryptionKey = generateKey();
+                }
+
+                const encTitle = encryptionKey ? encrypt(title, encryptionKey) : title;
+                const encMemo = encryptionKey ? encrypt(memo, encryptionKey) : memo;
+
                 let targetId = eventId;
                 if (eventId) {
                     const docRef = doc(db, "events", eventId);
                     await updateDoc(docRef, {
-                        title: title,
-                        memo: memo,
+                        title: encTitle,
+                        memo: encMemo,
                         candidates: candidates,
                         updatedAt: serverTimestamp()
                     });
@@ -334,8 +372,8 @@
                 } else {
                     const colRef = collection(db, "events");
                     const docRef = await addDoc(colRef, {
-                        title: title,
-                        memo: memo,
+                        title: encTitle,
+                        memo: encMemo,
                         candidates: candidates,
                         createdAt: serverTimestamp()
                     });
@@ -343,18 +381,18 @@
                 }
 
                 resultArea.style.display = "block";
-                
-                // 共有URL生成ロジック
-                const currentUrl = window.location.href; 
+
+                // 共有URL生成ロジック（ハッシュに暗号鍵を付与）
+                const currentUrl = window.location.href.split('#')[0];
                 let baseUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/')) + '/';
-                // ルート直下やindex.htmlを含んでいる場合の補正
                 if (baseUrl.includes('index.html')) { baseUrl = baseUrl.replace('index.html', ''); }
 
-                const answerPageUrl = baseUrl + "event.html?id=" + targetId;
+                const keyHash = encryptionKey ? "#key=" + encryptionKey : "";
+                const answerPageUrl = baseUrl + "event.html?id=" + targetId + keyHash;
                 shareLink.href = answerPageUrl;
                 shareLink.innerText = answerPageUrl;
 
-                const editPageUrl = baseUrl + "?id=" + targetId + "&mode=edit";
+                const editPageUrl = baseUrl + "?id=" + targetId + "&mode=edit" + keyHash;
                 editLink.href = editPageUrl;
                 editLink.innerText = editPageUrl;
 

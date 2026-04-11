@@ -133,6 +133,54 @@
         .btn-new-user { width: 100%; background-color: #28a745; color: white; padding: 12px; margin-bottom: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
         .btn-delete-user { background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer; margin-left: 10px; }
 
+        /* 分析バー */
+        .analysis-bar {
+            flex: 0 0 auto; background: white; padding: 8px 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .analysis-controls {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        .score-label { font-size: 0.8rem; font-weight: bold; color: #555; white-space: nowrap; }
+        #scoreMode {
+            padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 0.85rem; background: #fff; min-height: auto;
+            width: auto; flex: 0 0 auto;
+        }
+        .btn-filter-settings {
+            font-size: 0.8rem; padding: 5px 12px; background: #f0f0f0; border: 1px solid #ccc;
+            border-radius: 4px; cursor: pointer; white-space: nowrap;
+        }
+        .top-recommendations {
+            margin-top: 8px; font-size: 0.85rem;
+        }
+        .top-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+        .top-rank { font-weight: bold; min-width: 20px; }
+        .top-rank.r1 { color: #d4a017; }
+        .top-rank.r2 { color: #888; }
+        .top-rank.r3 { color: #a0522d; }
+        .top-no-result { color: #999; font-style: italic; padding: 4px 0; }
+
+        /* フィルターモーダル内 */
+        .filter-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 8px;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        .filter-item label { display: flex; align-items: center; gap: 6px; flex: 1; margin: 0; font-size: 0.95rem; font-weight: normal; cursor: pointer; }
+        .filter-item input[type="checkbox"] { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
+        .vip-toggle {
+            border: 1px solid #ccc; background: #f5f5f5; color: #999; border-radius: 4px;
+            padding: 4px 10px; cursor: pointer; font-size: 0.85rem; transition: 0.2s; flex: 0 0 auto;
+        }
+        .vip-toggle.active { background: #fff3cd; color: #d4a017; border-color: #d4a017; font-weight: bold; }
+
+        /* ヒートマップ追加色 */
+        .bg-best { background-color: #28a745 !important; }
+        .bg-good { background-color: #71c285 !important; }
+        .bg-ok { background-color: #b6dfbe !important; }
+        .bg-warn { background-color: #fff3cd !important; }
+        .bg-bad { background-color: #f8d7da !important; }
+
         /* --- 【広告枠B】完了モーダル内広告 --- */
         .ad-in-modal {
             margin: 20px 0; background: #f9f9f9; padding: 10px; border-radius: 8px;
@@ -173,6 +221,18 @@
     <div class="ad-banner-top">
         <div class="ad-placeholder">広告枠（ヘッダー下）</div>
         </div>
+
+    <div class="analysis-bar">
+        <div class="analysis-controls">
+            <label for="scoreMode" class="score-label">評価モード:</label>
+            <select id="scoreMode">
+                <option value="A">〇優先</option>
+                <option value="B">✕除外優先</option>
+            </select>
+            <button class="btn-filter-settings" id="btnFilterSettings">⚙️ 集計設定</button>
+        </div>
+        <div id="topRecommendations" class="top-recommendations"></div>
+    </div>
 
     <div class="matrix-container" id="matrix">
         <table id="scheduleTable"></table>
@@ -229,6 +289,13 @@
         <button class="btn-list" style="width:100%; margin-top:10px; justify-content:center;" onclick="goToTop()">あなたもイベントを作る</button>
     </div>
 
+    <div class="modal-window" id="filterModal">
+        <h3 class="modal-title">⚙️ 集計設定</h3>
+        <p style="font-size:0.85rem; color:#666; margin-bottom:10px;">チェックを外すと集計から除外します。★をONにするとVIP（必須参加者）になります。</p>
+        <ul class="user-list" id="filterUserList"></ul>
+        <button class="modal-close" onclick="closeAllModals()">閉じる</button>
+    </div>
+
     <div id="systemOverlay" class="system-overlay">
         <div class="system-box">
             <p id="systemMessage" class="system-text"></p>
@@ -236,6 +303,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script type="module">
         // -----------------------------------------------------
         // ▼▼▼ firebaseConfig ▼▼▼
@@ -290,8 +358,27 @@
         const btnSave = document.getElementById('btnSave');
         const userNameInput = document.getElementById('userName');
 
+        // --- 暗号化ユーティリティ ---
+        function encrypt(text, key) {
+            if (!text) return '';
+            return CryptoJS.AES.encrypt(text, key).toString();
+        }
+        function decrypt(cipherText, key) {
+            if (!cipherText) return '';
+            try {
+                const bytes = CryptoJS.AES.decrypt(cipherText, key);
+                return bytes.toString(CryptoJS.enc.Utf8);
+            } catch (e) { return cipherText; }
+        }
+        function getKeyFromHash() {
+            const hash = window.location.hash;
+            const match = hash.match(/key=([^&]+)/);
+            return match ? match[1] : null;
+        }
+        const encryptionKey = getKeyFromHash();
+
         let eventId = new URLSearchParams(window.location.search).get('id');
-        let candidates = []; let allAnswers = {}; let myMatrix = {};   
+        let candidates = []; let allAnswers = {}; let myMatrix = {};
         let currentUid = null; let currentPen = 'o'; let dragAction = null; let lastTouchedCell = null;
 
         window.setPen = (type) => {
@@ -306,6 +393,7 @@
             document.getElementById('userListModal').style.display = 'none';
             document.getElementById('helpModal').style.display = 'none';
             document.getElementById('successModal').style.display = 'none';
+            document.getElementById('filterModal').style.display = 'none';
         };
         const openModalBase = (id) => {
             document.getElementById('contentOverlay').style.display = 'block';
@@ -317,6 +405,130 @@
         window.loadUserToEdit = loadUserToEdit;
         window.deleteUser = deleteUser;
 
+        // --- 集計エンジン: フィルター/VIP/スコア状態 ---
+        let filterInclude = {};  // { uid: true/false }
+        let vipStatus = {};      // { uid: true/false }
+
+        const scoreModeSelect = document.getElementById('scoreMode');
+        const btnFilterSettings = document.getElementById('btnFilterSettings');
+        const topRecommendations = document.getElementById('topRecommendations');
+
+        scoreModeSelect.addEventListener('change', () => { updateHeatmap(); });
+        btnFilterSettings.addEventListener('click', () => { renderFilterModal(); });
+
+        function getScoreWeights() {
+            return scoreModeSelect.value === 'B'
+                ? { o: 1, tri: 0, x: -100 }
+                : { o: 2, tri: 1, x: 0 };
+        }
+
+        function getFilteredAnswers() {
+            const result = {};
+            Object.entries(allAnswers).forEach(([uid, ans]) => {
+                if (filterInclude[uid] !== false) result[uid] = ans;
+            });
+            return result;
+        }
+
+        function getVipUids() {
+            return Object.keys(vipStatus).filter(uid => vipStatus[uid] && filterInclude[uid] !== false);
+        }
+
+        function computeScores() {
+            const weights = getScoreWeights();
+            const filtered = getFilteredAnswers();
+            const vips = getVipUids();
+            const scores = {};
+
+            const activeCells = document.querySelectorAll('td[data-key]');
+            activeCells.forEach(td => {
+                const key = td.dataset.key;
+                let score = 0;
+                let vipBlocked = false;
+
+                Object.entries(filtered).forEach(([uid, ans]) => {
+                    if (!ans.matrix) return;
+                    const val = ans.matrix[key];
+                    if (val === 'o') score += weights.o;
+                    else if (val === 'tri') score += weights.tri;
+                    else if (val === 'x') {
+                        score += weights.x;
+                        if (vips.includes(uid)) vipBlocked = true;
+                    }
+                });
+
+                if (vipBlocked) score = -9999;
+                scores[key] = score;
+            });
+
+            return scores;
+        }
+
+        function renderTop3(scores) {
+            const entries = Object.entries(scores)
+                .filter(([, s]) => s > 0)
+                .sort((a, b) => b[1] - a[1]);
+
+            if (entries.length === 0) {
+                topRecommendations.innerHTML = '<div class="top-no-result">おすすめできる候補日がありません</div>';
+                return;
+            }
+
+            const top = entries.slice(0, 3);
+            const medals = ['👑', '🥈', '🥉'];
+            const rankClasses = ['r1', 'r2', 'r3'];
+            topRecommendations.innerHTML = top.map(([key, score], i) => {
+                const [date, time] = key.split('_');
+                const d = new Date(date);
+                const dateStr = d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
+                return `<div class="top-item"><span class="top-rank ${rankClasses[i]}">${medals[i]}</span><span>${dateStr} ${time}:00〜</span><span style="color:#888; font-size:0.75rem;">(${score}pt)</span></div>`;
+            }).join('');
+        }
+
+        function renderFilterModal() {
+            const list = document.getElementById('filterUserList');
+            list.innerHTML = '';
+            const uids = Object.keys(allAnswers);
+
+            if (uids.length === 0) {
+                list.innerHTML = '<li style="padding:10px; color:#666; text-align:center">回答なし</li>';
+                openModalBase('filterModal');
+                return;
+            }
+
+            uids.forEach(uid => {
+                const ans = allAnswers[uid];
+                const plainName = decryptName(ans.name);
+                const included = filterInclude[uid] !== false;
+                const isVip = !!vipStatus[uid];
+
+                const li = document.createElement('li');
+                li.className = 'filter-item';
+                li.innerHTML = `
+                    <label><input type="checkbox" data-uid="${uid}" class="filter-check" ${included ? 'checked' : ''}>${plainName}</label>
+                    <button class="vip-toggle ${isVip ? 'active' : ''}" data-uid="${uid}">★ VIP</button>
+                `;
+                list.appendChild(li);
+            });
+
+            list.querySelectorAll('.filter-check').forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    filterInclude[e.target.dataset.uid] = e.target.checked;
+                    updateHeatmap();
+                });
+            });
+            list.querySelectorAll('.vip-toggle').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const uid = e.target.dataset.uid;
+                    vipStatus[uid] = !vipStatus[uid];
+                    e.target.classList.toggle('active', vipStatus[uid]);
+                    updateHeatmap();
+                });
+            });
+
+            openModalBase('filterModal');
+        }
+
         async function init() {
             if (!eventId) { eventTitleEl.innerText = "エラー: IDなし"; return; }
             try {
@@ -324,10 +536,12 @@
                 const eventSnap = await getDoc(eventRef);
                 if (!eventSnap.exists()) { eventTitleEl.innerText = "イベントが見つかりません"; return; }
                 const eventData = eventSnap.data();
-                eventTitleEl.innerText = eventData.title;
-                
+                const decTitle = encryptionKey ? decrypt(eventData.title, encryptionKey) : eventData.title;
+                eventTitleEl.innerText = decTitle;
+
                 if (eventData.memo) {
-                    eventMemoEl.textContent = eventData.memo;
+                    const decMemo = encryptionKey ? decrypt(eventData.memo, encryptionKey) : eventData.memo;
+                    eventMemoEl.textContent = decMemo;
                     eventMemoEl.style.display = "block";
                 }
 
@@ -337,9 +551,13 @@
                 const answersRef = collection(db, "events", eventId, "answers");
                 onSnapshot(answersRef, (snapshot) => {
                     allAnswers = {}; snapshot.forEach(doc => { allAnswers[doc.id] = doc.data(); });
+                    // 新規回答者のフィルター初期値をONに設定
+                    Object.keys(allAnswers).forEach(uid => {
+                        if (filterInclude[uid] === undefined) filterInclude[uid] = true;
+                    });
                     statusMsg.innerText = `${Object.keys(allAnswers).length}人の回答`;
                     if (currentUid && allAnswers[currentUid]) { myMatrix = { ...allAnswers[currentUid].matrix }; }
-                    updateHeatmap(); highlightMySelection(); 
+                    updateHeatmap(); highlightMySelection();
                 });
 
                 const savedUid = localStorage.getItem(`uid_${eventId}`);
@@ -376,18 +594,23 @@
             highlightMySelection();
         }
 
+        function decryptName(encName) {
+            return encryptionKey ? decrypt(encName, encryptionKey) : encName;
+        }
+
         function loadUserToEdit(uid) {
             if (!allAnswers[uid]) return;
             currentUid = uid;
             localStorage.setItem(`uid_${eventId}`, currentUid);
             const data = allAnswers[uid];
-            userNameInput.value = data.name;
-            localStorage.setItem(`name_${eventId}`, data.name);
+            const plainName = decryptName(data.name);
+            userNameInput.value = plainName;
+            localStorage.setItem(`name_${eventId}`, plainName);
             myMatrix = data.matrix ? { ...data.matrix } : {};
             userNameInput.classList.add("editing");
             window.closeAllModals();
             highlightMySelection();
-            alert(`${data.name} さんの回答を読み込みました`);
+            alert(`${plainName} さんの回答を読み込みました`);
         }
 
         function deleteUser(uid) {
@@ -435,27 +658,50 @@
         }
 
         function updateHeatmap() {
-            const counts = {}; 
-            Object.values(allAnswers).forEach(ans => {
+            const filtered = getFilteredAnswers();
+
+            // セルごとの◯△✕カウント（フィルター適用済み）
+            const counts = {};
+            Object.values(filtered).forEach(ans => {
                 if (!ans.matrix) return;
                 Object.entries(ans.matrix).forEach(([key, val]) => {
-                    if (!counts[key]) counts[key] = {o:0, tri:0, x:0};
-                    if (val === 'o') counts[key].o++; if (val === 'tri') counts[key].tri++; if (val === 'x') counts[key].x++;
+                    if (!counts[key]) counts[key] = { o: 0, tri: 0, x: 0 };
+                    if (val === 'o') counts[key].o++;
+                    if (val === 'tri') counts[key].tri++;
+                    if (val === 'x') counts[key].x++;
                 });
             });
+
+            // スコア計算
+            const scores = computeScores();
+            const scoreValues = Object.values(scores);
+            const maxScore = scoreValues.length > 0 ? Math.max(...scoreValues) : 0;
+
+            const heatClasses = ['bg-best', 'bg-good', 'bg-ok', 'bg-warn', 'bg-bad', 'bg-none'];
+
             document.querySelectorAll('td[data-key]').forEach(td => {
                 const key = td.dataset.key;
-                const c = counts[key] || {o:0, tri:0, x:0};
-                const total = c.o + c.tri + c.x;
-                td.querySelector('.cell-content').innerHTML = `<span class="c-o">●${c.o}</span><span class="c-tri">▲${c.tri}</span><span class="c-x">×${c.x}</span>`;
-                td.classList.remove('bg-high', 'bg-mid', 'bg-low', 'bg-none');
-                if (total > 0) {
-                    const score = c.o * 2 + c.tri * 1; const maxScore = Object.keys(allAnswers).length * 2;
-                    if (maxScore > 0 && score / maxScore > 0.8) td.classList.add('bg-high');
-                    else if (c.x > 0 && c.x > Object.keys(allAnswers).length / 2) td.classList.add('bg-low');
-                    else td.classList.add('bg-mid');
-                } else { td.classList.add('bg-none'); }
+                const c = counts[key] || { o: 0, tri: 0, x: 0 };
+                td.querySelector('.cell-content').innerHTML =
+                    `<span class="c-o">●${c.o}</span><span class="c-tri">▲${c.tri}</span><span class="c-x">×${c.x}</span>`;
+
+                heatClasses.forEach(cls => td.classList.remove(cls));
+                td.classList.remove('bg-high', 'bg-mid', 'bg-low');
+
+                const s = scores[key] ?? 0;
+                if (maxScore <= 0 || s <= 0) {
+                    td.classList.add(s < 0 ? 'bg-bad' : 'bg-none');
+                } else {
+                    const ratio = s / maxScore;
+                    if (ratio >= 1)        td.classList.add('bg-best');
+                    else if (ratio >= 0.75) td.classList.add('bg-good');
+                    else if (ratio >= 0.5)  td.classList.add('bg-ok');
+                    else if (ratio >= 0.25) td.classList.add('bg-warn');
+                    else                    td.classList.add('bg-bad');
+                }
             });
+
+            renderTop3(scores);
         }
 
         function highlightMySelection() {
@@ -519,7 +765,8 @@
                 if(val === 'o') { statusIcon = "◯"; color = "green"; }
                 if(val === 'tri') { statusIcon = "△"; color = "#b8860b"; }
                 if(val === 'x') { statusIcon = "✕"; color = "red"; }
-                list.innerHTML += `<li class="user-list-item"><span>${ans.name || '名無し'}</span><span style="color:${color}; font-weight:bold;">${statusIcon}</span></li>`;
+                const displayName = decryptName(ans.name) || '名無し';
+                list.innerHTML += `<li class="user-list-item"><span>${displayName}</span><span style="color:${color}; font-weight:bold;">${statusIcon}</span></li>`;
             });
             openModalBase('detailModal');
         }
@@ -533,9 +780,10 @@
                 const ans = allAnswers[uid];
                 const isMe = (uid === currentUid);
                 const badge = isMe ? `<span class="badge-edit">編集中</span>` : '';
+                const plainName = decryptName(ans.name);
                 const li = document.createElement('li');
                 li.className = "user-list-item";
-                li.innerHTML = `<div style="flex:1" onclick="loadUserToEdit('${uid}')"><span style="font-weight:bold; font-size:1.1rem;">${ans.name}</span>${badge}</div><button class="btn-delete-user" onclick="deleteUser('${uid}')">削除</button>`;
+                li.innerHTML = `<div style="flex:1" onclick="loadUserToEdit('${uid}')"><span style="font-weight:bold; font-size:1.1rem;">${plainName}</span>${badge}</div><button class="btn-delete-user" onclick="deleteUser('${uid}')">削除</button>`;
                 list.appendChild(li);
             });
             openModalBase('userListModal');
@@ -548,8 +796,9 @@
             const executeSave = async () => {
                 btnSave.disabled = true; btnSave.innerText = "保存中...";
                 try {
+                    const encName = encryptionKey ? encrypt(name, encryptionKey) : name;
                     const docRef = doc(db, "events", eventId, "answers", currentUid);
-                    await setDoc(docRef, { name: name, matrix: myMatrix, updatedAt: serverTimestamp() });
+                    await setDoc(docRef, { name: encName, matrix: myMatrix, updatedAt: serverTimestamp() });
                     localStorage.setItem(`name_${eventId}`, name);
                     userNameInput.classList.remove("editing");
                     
