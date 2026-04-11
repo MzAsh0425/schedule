@@ -106,8 +106,22 @@
         input:checked + .slider:before { transform: translateX(22px); }
 
         /* モーダル */
-        .content-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 300; }
+        .content-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 300; transition: opacity 0.3s ease; }
         .modal-window { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 310; width: 85%; max-width: 350px; max-height: 80vh; overflow-y: auto; }
+
+        /* ボトムシート */
+        .bottom-sheet {
+            display: block; position: fixed; bottom: 0; left: 0; width: 100%;
+            background: white; padding: 10px 20px 25px; z-index: 310;
+            border-radius: 20px 20px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            max-height: 75vh; overflow-y: auto;
+            transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .bottom-sheet.is-open { transform: translateY(0); }
+        .sheet-handle {
+            width: 40px; height: 5px; border-radius: 3px; background: #ccc;
+            margin: 4px auto 12px;
+        }
         
         .system-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center; }
         .system-overlay.is-active { display: flex; }
@@ -174,12 +188,82 @@
         }
         .vip-toggle.active { background: #fff3cd; color: #d4a017; border-color: #d4a017; font-weight: bold; }
 
-        /* ヒートマップ追加色 */
+        /* ヒートマップ色 + アニメーション */
+        td[data-key] { transition: background-color 0.4s ease; }
         .bg-best { background-color: #28a745 !important; }
         .bg-good { background-color: #71c285 !important; }
         .bg-ok { background-color: #b6dfbe !important; }
         .bg-warn { background-color: #fff3cd !important; }
         .bg-bad { background-color: #f8d7da !important; }
+        .bg-vip-blocked {
+            background: repeating-linear-gradient(
+                -45deg, #f8d7da, #f8d7da 5px, #f1aeb5 5px, #f1aeb5 10px
+            ) !important;
+        }
+        .vip-blocked-icon { display: block; font-size: 0.6rem; line-height: 1; margin-top: 1px; }
+
+        /* チュートリアルモーダル */
+        #helpModal {
+            width: 90%; max-width: 380px; padding: 0; overflow: hidden;
+            border-radius: 16px;
+        }
+        .tutorial-viewport {
+            overflow: hidden; position: relative;
+        }
+        .tutorial-track {
+            display: flex; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tutorial-slide {
+            min-width: 100%; padding: 30px 25px 20px; box-sizing: border-box;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        .slide-icon { font-size: 3rem; margin-bottom: 12px; }
+        .slide-title { font-size: 1.15rem; font-weight: bold; color: #2c3e50; margin-bottom: 10px; }
+        .slide-body { font-size: 0.9rem; color: #555; line-height: 1.6; }
+        .slide-body .hl { display: inline-block; background: #eef2f5; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; margin: 0 2px; }
+        .slide-symbols { display: flex; justify-content: center; gap: 12px; margin: 10px 0; font-size: 1.3rem; font-weight: bold; }
+        .sym-o { color: #28a745; }
+        .sym-tri { color: #ffc107; }
+        .sym-x { color: #dc3545; }
+        .tutorial-footer {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 20px 18px; border-top: 1px solid #eee; background: #fafafa;
+        }
+        .tutorial-dots { display: flex; gap: 8px; }
+        .dot {
+            width: 9px; height: 9px; border-radius: 50%; background: #ccc;
+            transition: background 0.3s, transform 0.3s;
+        }
+        .dot.active { background: #2c3e50; transform: scale(1.3); }
+        .tut-btn {
+            border: none; padding: 8px 20px; border-radius: 8px; font-weight: bold;
+            font-size: 0.9rem; cursor: pointer; transition: opacity 0.2s;
+        }
+        .tut-btn:disabled { opacity: 0; pointer-events: none; }
+        .tut-btn-prev { background: #eee; color: #555; }
+        .tut-btn-next { background: #2c3e50; color: white; }
+        .tut-btn-next.finish { background: #28a745; }
+
+        /* トースト通知 */
+        #toast-container {
+            position: fixed; top: 0; left: 0; width: 100%; z-index: 2000;
+            display: flex; flex-direction: column; align-items: center; pointer-events: none;
+        }
+        .toast {
+            pointer-events: auto;
+            margin: 8px 15px 0; padding: 12px 20px; border-radius: 10px;
+            color: white; font-size: 0.9rem; font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            opacity: 0; transform: translateY(-30px);
+            animation: toastIn 0.35s ease forwards;
+            max-width: 90%;
+        }
+        .toast.removing { animation: toastOut 0.3s ease forwards; }
+        .toast-success { background: #28a745; }
+        .toast-error { background: #dc3545; }
+        .toast-info { background: #2c3e50; }
+        @keyframes toastIn { to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { to { opacity: 0; transform: translateY(-30px); } }
 
         /* --- 【広告枠B】完了モーダル内広告 --- */
         .ad-in-modal {
@@ -255,21 +339,49 @@
 
     <div class="content-overlay" id="contentOverlay" onclick="closeAllModals()"></div>
 
-    <div class="modal-window" id="detailModal">
+    <div class="bottom-sheet" id="detailModal">
+        <div class="sheet-handle"></div>
         <h3 class="modal-title" id="detailModalTitle">日時詳細</h3>
         <ul class="user-list" id="detailList"></ul>
         <button class="modal-close" onclick="closeAllModals()">閉じる</button>
     </div>
 
     <div class="modal-window" id="helpModal">
-        <h3 class="modal-title">📌 使い方ガイド</h3>
-        <div class="help-section"><div class="help-head">✏️ 入力方法</div><p class="help-text"><span class="help-tag">入力ON</span>でなぞると連続入力できます。同じペンでなぞると消えます。</p></div>
-        <div class="help-section"><div class="help-head">👀 詳細を見る</div><p class="help-text"><span class="help-tag">入力OFF</span>でマスをタップするとメンバー詳細が見れます。</p></div>
-        <div class="help-section"><div class="help-head">👥 修正・代理</div><p class="help-text">「回答一覧」から名前を選んで修正できます。「新しく入力」で代理入力できます。</p></div>
-        <button class="modal-close" onclick="closeAllModals()">閉じる</button>
+        <div class="tutorial-viewport">
+            <div class="tutorial-track" id="tutorialTrack">
+                <div class="tutorial-slide">
+                    <div class="slide-icon">✏️</div>
+                    <div class="slide-title">直感的に入力！</div>
+                    <div class="slide-body">
+                        <div class="slide-symbols"><span class="sym-o">◯</span><span class="sym-tri">△</span><span class="sym-x">×</span></div>
+                        下のペンを選んで<span class="hl">入力ON</span>にしたら、<br>表をなぞるだけで連続入力できます。<br>同じペンでもう一度なぞると消せます。
+                    </div>
+                </div>
+                <div class="tutorial-slide">
+                    <div class="slide-icon">👑</div>
+                    <div class="slide-title">最適な時間を自動抽出</div>
+                    <div class="slide-body">
+                        <span class="hl">評価モード</span>を切り替えると、<br>全員が参加しやすいベストな時間帯を<br>Top3で自動ハイライト！<br>表の色が濃い緑ほどおすすめです。
+                    </div>
+                </div>
+                <div class="tutorial-slide">
+                    <div class="slide-icon">⚙️</div>
+                    <div class="slide-title">高度な集計設定</div>
+                    <div class="slide-body">
+                        <span class="hl">⚙️ 集計設定</span>ボタンから、<br>必須参加者（★VIP）の設定や<br>特定メンバーの除外ができます。<br>VIPが不可の時間帯は⚠️で表示されます。
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tutorial-footer">
+            <button class="tut-btn tut-btn-prev" id="tutPrev" onclick="tutorialNav(-1)">戻る</button>
+            <div class="tutorial-dots" id="tutorialDots"></div>
+            <button class="tut-btn tut-btn-next" id="tutNext" onclick="tutorialNav(1)">次へ</button>
+        </div>
     </div>
 
-    <div class="modal-window" id="userListModal">
+    <div class="bottom-sheet" id="userListModal">
+        <div class="sheet-handle"></div>
         <h3 class="modal-title">回答者一覧・編集</h3>
         <p style="font-size:0.85rem; color:#666; margin-bottom:15px;">名前タップで修正、削除で取り消し。<br>代理入力は「新しく入力」から。</p>
         <button class="btn-new-user" onclick="switchToNewUser()">＋ 新しく入力する</button>
@@ -289,7 +401,8 @@
         <button class="btn-list" style="width:100%; margin-top:10px; justify-content:center;" onclick="goToTop()">あなたもイベントを作る</button>
     </div>
 
-    <div class="modal-window" id="filterModal">
+    <div class="bottom-sheet" id="filterModal">
+        <div class="sheet-handle"></div>
         <h3 class="modal-title">⚙️ 集計設定</h3>
         <p style="font-size:0.85rem; color:#666; margin-bottom:10px;">チェックを外すと集計から除外します。★をONにするとVIP（必須参加者）になります。</p>
         <ul class="user-list" id="filterUserList"></ul>
@@ -302,6 +415,8 @@
             <div class="system-btn-group" id="systemBtnGroup"></div>
         </div>
     </div>
+
+    <div id="toast-container"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script type="module">
@@ -327,11 +442,22 @@
         const systemOverlay = document.getElementById('systemOverlay');
         const systemMessage = document.getElementById('systemMessage');
         const systemBtnGroup = document.getElementById('systemBtnGroup');
+        const toastContainer = document.getElementById('toast-container');
+
+        // --- トースト通知 ---
+        function showToast(message, type = 'info') {
+            const el = document.createElement('div');
+            el.className = `toast toast-${type}`;
+            el.textContent = message;
+            toastContainer.appendChild(el);
+            setTimeout(() => {
+                el.classList.add('removing');
+                el.addEventListener('animationend', () => el.remove());
+            }, 2500);
+        }
 
         window.alert = function(message) {
-            systemMessage.textContent = message;
-            systemBtnGroup.innerHTML = `<button class="system-btn btn-ok" onclick="closeSystemModal()">OK</button>`;
-            systemOverlay.classList.add('is-active');
+            showToast(message, 'info');
         };
 
         window.showConfirm = function(message, onYes) {
@@ -387,19 +513,67 @@
             document.querySelector(`.pen-${type}`).classList.add('active');
         };
 
+        const bottomSheetIds = ['detailModal', 'userListModal', 'filterModal'];
+
         window.closeAllModals = () => {
             document.getElementById('contentOverlay').style.display = 'none';
-            document.getElementById('detailModal').style.display = 'none';
-            document.getElementById('userListModal').style.display = 'none';
+            // 通常モーダル
             document.getElementById('helpModal').style.display = 'none';
             document.getElementById('successModal').style.display = 'none';
-            document.getElementById('filterModal').style.display = 'none';
+            // ボトムシート
+            bottomSheetIds.forEach(sid => {
+                document.getElementById(sid).classList.remove('is-open');
+            });
         };
         const openModalBase = (id) => {
             document.getElementById('contentOverlay').style.display = 'block';
-            document.getElementById(id).style.display = 'block';
+            const el = document.getElementById(id);
+            if (bottomSheetIds.includes(id)) {
+                el.classList.add('is-open');
+            } else {
+                el.style.display = 'block';
+            }
         };
-        window.openHelpModal = () => openModalBase('helpModal');
+        // --- チュートリアル（スライド式ヘルプ） ---
+        let tutorialPage = 0;
+        const tutorialTrack = document.getElementById('tutorialTrack');
+        const tutorialDots = document.getElementById('tutorialDots');
+        const tutPrev = document.getElementById('tutPrev');
+        const tutNext = document.getElementById('tutNext');
+        const totalSlides = tutorialTrack.children.length;
+
+        // ドットを生成
+        for (let i = 0; i < totalSlides; i++) {
+            const dot = document.createElement('span');
+            dot.className = 'dot' + (i === 0 ? ' active' : '');
+            tutorialDots.appendChild(dot);
+        }
+
+        function updateTutorialUI() {
+            tutorialTrack.style.transform = `translateX(-${tutorialPage * 100}%)`;
+            tutorialDots.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === tutorialPage));
+            tutPrev.disabled = (tutorialPage === 0);
+            const isLast = (tutorialPage === totalSlides - 1);
+            tutNext.textContent = isLast ? 'はじめる' : '次へ';
+            tutNext.classList.toggle('finish', isLast);
+        }
+
+        window.tutorialNav = function(dir) {
+            if (dir === 1 && tutorialPage === totalSlides - 1) {
+                closeAllModals();
+                return;
+            }
+            tutorialPage = Math.max(0, Math.min(totalSlides - 1, tutorialPage + dir));
+            updateTutorialUI();
+        };
+
+        window.openHelpModal = () => {
+            tutorialPage = 0;
+            updateTutorialUI();
+            openModalBase('helpModal');
+        };
+
+        // 初回訪問の自動表示は init() 内で実行
         window.openUserListModal = renderUserListModal;
         window.switchToNewUser = setupNewUser;
         window.loadUserToEdit = loadUserToEdit;
@@ -566,6 +740,13 @@
                     const savedName = localStorage.getItem(`name_${eventId}`);
                     if(savedName) userNameInput.value = savedName;
                 } else { setupNewUser(); }
+
+                // 初回訪問時にチュートリアルを自動表示
+                const tutKey = `tutorialSeen_${eventId}`;
+                if (!localStorage.getItem(tutKey)) {
+                    setTimeout(() => { window.openHelpModal(); }, 600);
+                    localStorage.setItem(tutKey, '1');
+                }
             } catch (e) { console.error(e); eventTitleEl.innerText = "読み込みエラー"; }
         }
 
@@ -610,7 +791,7 @@
             userNameInput.classList.add("editing");
             window.closeAllModals();
             highlightMySelection();
-            alert(`${plainName} さんの回答を読み込みました`);
+            showToast(`${plainName} さんの回答を読み込みました`, 'info');
         }
 
         function deleteUser(uid) {
@@ -618,7 +799,7 @@
                 try {
                     await deleteDoc(doc(db, "events", eventId, "answers", uid));
                     if(uid === currentUid) { setupNewUser(); } else { renderUserListModal(); }
-                } catch(e) { alert("削除エラー: " + e); }
+                } catch(e) { showToast("削除エラー: " + e, 'error'); }
             });
         }
 
@@ -677,19 +858,26 @@
             const scoreValues = Object.values(scores);
             const maxScore = scoreValues.length > 0 ? Math.max(...scoreValues) : 0;
 
-            const heatClasses = ['bg-best', 'bg-good', 'bg-ok', 'bg-warn', 'bg-bad', 'bg-none'];
+            const heatClasses = ['bg-best', 'bg-good', 'bg-ok', 'bg-warn', 'bg-bad', 'bg-none', 'bg-vip-blocked'];
 
             document.querySelectorAll('td[data-key]').forEach(td => {
                 const key = td.dataset.key;
                 const c = counts[key] || { o: 0, tri: 0, x: 0 };
-                td.querySelector('.cell-content').innerHTML =
-                    `<span class="c-o">●${c.o}</span><span class="c-tri">▲${c.tri}</span><span class="c-x">×${c.x}</span>`;
 
                 heatClasses.forEach(cls => td.classList.remove(cls));
                 td.classList.remove('bg-high', 'bg-mid', 'bg-low');
 
                 const s = scores[key] ?? 0;
-                if (maxScore <= 0 || s <= 0) {
+                const isVipBlocked = (s === -9999);
+
+                // セル内容の描画（VIPブロック時は警告アイコン付き）
+                let cellHtml = `<span class="c-o">●${c.o}</span><span class="c-tri">▲${c.tri}</span><span class="c-x">×${c.x}</span>`;
+                if (isVipBlocked) cellHtml += `<span class="vip-blocked-icon">⚠️VIP</span>`;
+                td.querySelector('.cell-content').innerHTML = cellHtml;
+
+                if (isVipBlocked) {
+                    td.classList.add('bg-vip-blocked');
+                } else if (maxScore <= 0 || s <= 0) {
                     td.classList.add(s < 0 ? 'bg-bad' : 'bg-none');
                 } else {
                     const ratio = s / maxScore;
@@ -791,7 +979,7 @@
 
         btnSave.addEventListener('click', async () => {
             const name = userNameInput.value.trim();
-            if (!name) { alert("お名前を入力してください"); return; }
+            if (!name) { showToast("お名前を入力してください", 'error'); return; }
             
             const executeSave = async () => {
                 btnSave.disabled = true; btnSave.innerText = "保存中...";
@@ -802,9 +990,10 @@
                     localStorage.setItem(`name_${eventId}`, name);
                     userNameInput.classList.remove("editing");
                     
-                    openModalBase('successModal'); // 広告付きモーダルを表示
-                    
-                } catch (e) { console.error(e); alert("保存失敗: " + e); } 
+                    showToast("保存しました！", 'success');
+                    openModalBase('successModal');
+
+                } catch (e) { console.error(e); showToast("保存失敗: " + e, 'error'); } 
                 finally { btnSave.disabled = false; btnSave.innerText = "保存"; }
             };
 
