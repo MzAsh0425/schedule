@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>日程調整</title>
+    <style>
+        :root {
+            --cell-size: 50px; --header-bg: #f8f9fa; --border-color: #ddd; --primary-color: #2c3e50; --accent-color: #007bff;
+        }
+        
+        html, body {
+            height: 100%; margin: 0; padding: 0; overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f4f9; color: #333;
+            display: flex; flex-direction: column;
+        }
+
+        /* ヘッダー */
+        .header {
+            flex: 0 0 auto; padding: 10px 15px; background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 100;
+        }
+        .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .event-info { flex: 1; margin-right: 10px; }
+        .event-title { margin: 0; font-size: 1.1rem; color: #2c3e50; font-weight: bold; }
+        
+        .event-memo {
+            font-size: 0.85rem; color: #555; background: #f1f3f5;
+            padding: 8px; border-radius: 4px; margin-top: 5px;
+            white-space: pre-wrap; display: none; max-height: 80px; overflow-y: auto;
+        }
+
+        .header-actions { display: flex; gap: 8px; align-items: center; }
+        .btn-list { font-size: 0.8rem; padding: 6px 12px; background: #e9ecef; border: none; border-radius: 4px; cursor: pointer; color: #333; display: flex; align-items: center; gap: 4px; }
+        .btn-help { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ccc; background: white; color: #666; font-weight: bold; font-size: 0.9rem; cursor: pointer; display: flex; justify-content: center; align-items: center; }
+
+        .user-input-area { display: flex; gap: 8px; max-width: 600px; margin: 0 auto; }
+        input.name-input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; background: #fff; }
+        input.name-input.editing { border: 2px solid var(--accent-color); background: #f0f8ff; }
+        button.btn-save { background-color: var(--primary-color); color: white; border: none; padding: 0 20px; border-radius: 4px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+        button.btn-save:disabled { background-color: #999; }
+
+        /* --- 【広告枠A】ヘッダー下 --- */
+        .ad-banner-top {
+            flex: 0 0 auto; /* 高さを固定せず中身に合わせる */
+            background: #f4f4f9;
+            text-align: center;
+            padding: 5px 0;
+            border-bottom: 1px solid #ddd;
+            min-height: 50px; /* 広告が入る高さを確保 */
+            display: flex; justify-content: center; align-items: center;
+        }
+        /* ダミー広告スタイル（本番は削除） */
+        .ad-placeholder {
+            width: 320px; height: 50px; background: #ddd; color: #888;
+            font-size: 0.8rem; display: flex; justify-content: center; align-items: center;
+        }
+
+        /* マトリクスエリア */
+        .matrix-container {
+            flex: 1; overflow: auto; position: relative; -webkit-user-select: none; user-select: none; background: white;
+            overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: 80px; 
+        }
+
+        table { border-collapse: separate; border-spacing: 0; width: 100%; }
+        th, td { width: var(--cell-size); height: var(--cell-size); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); text-align: center; font-size: 0.75rem; padding: 0; box-sizing: border-box; vertical-align: middle; }
+        thead th { position: sticky; top: 0; background: var(--header-bg); z-index: 10; font-weight: bold; height: 40px; border-bottom: 2px solid #ccc; }
+        thead th:first-child { left: 0; z-index: 20; background: var(--header-bg); }
+        tbody th { position: sticky; left: 0; background: var(--header-bg); z-index: 5; font-weight: normal; font-size: 0.8rem; border-right: 2px solid #ccc; }
+
+        .disabled-cell { background-color: #e9ecef !important; background-image: linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 50%, #ddd 50%, #ddd 75%, transparent 75%, transparent); background-size: 10px 10px; pointer-events: none; }
+        .cell-content { display: flex; flex-direction: column; justify-content: center; height: 100%; line-height: 1.1; font-size: 0.65rem; }
+        .c-o { color: #006400; font-weight: bold; }
+        .c-tri { color: #b8860b; }
+        .c-x { color: #999; }
+        .bg-high { background-color: #d4edda; }
+        .bg-mid { background-color: #fff3cd; }
+        .bg-low { background-color: #f8d7da; }
+        .bg-none { background-color: #fff; }
+        .my-selection-o { box-shadow: inset 0 0 0 3px #28a745; }
+        .my-selection-tri { box-shadow: inset 0 0 0 3px #ffc107; }
+        .my-selection-x { box-shadow: inset 0 0 0 3px #dc3545; }
+
+        /* 操作パネル */
+        .control-panel {
+            flex: 0 0 auto; position: fixed; bottom: 0; left: 0; width: 100%;
+            background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            padding: 10px 15px; display: flex; justify-content: space-between; align-items: center;
+            z-index: 200; box-sizing: border-box;
+        }
+        .pen-group { display: flex; background: #eee; border-radius: 20px; padding: 4px; }
+        .pen-btn { border: none; background: none; padding: 10px 20px; border-radius: 16px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; }
+        .pen-btn.active { background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .pen-o.active { color: #28a745; }
+        .pen-tri.active { color: #ffc107; }
+        .pen-x.active { color: #dc3545; }
+        .mode-switch { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .switch-label { font-size: 0.7rem; font-weight: bold; color: #555; }
+        .toggle { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #2c3e50; }
+        input:checked + .slider:before { transform: translateX(22px); }
+
+        /* モーダル */
+        .content-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 300; }
+        .modal-window { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 310; width: 85%; max-width: 350px; max-height: 80vh; overflow-y: auto; }
+        
+        .system-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .system-overlay.is-active { display: flex; }
+        .system-box { background: white; padding: 20px 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: center; max-width: 80%; width: 300px; animation: fadeIn 0.2s ease-out; z-index: 1001; }
+        .system-text { font-size: 1rem; color: #333; margin: 0 0 20px 0; line-height: 1.5; white-space: pre-wrap; }
+        .system-btn-group { display: flex; justify-content: center; gap: 15px; }
+        .system-btn { border: none; padding: 10px 25px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-ok { background-color: var(--primary-color); color: white; }
+        .btn-cancel { background-color: #eee; color: #333; }
+        .btn-ok:hover { opacity: 0.9; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+        .modal-title { margin: 0 0 15px 0; font-size: 1.1rem; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        .modal-close { margin-top: 15px; width: 100%; padding: 10px; background: #eee; border: none; border-radius: 4px; cursor: pointer; }
+        .help-section { margin-bottom: 15px; }
+        .help-head { font-weight: bold; font-size: 0.9rem; color: #2c3e50; margin-bottom: 5px; }
+        .help-text { font-size: 0.85rem; color: #555; line-height: 1.5; margin: 0; }
+        .help-tag { display: inline-block; padding: 2px 6px; background: #eee; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 4px; }
+        .user-list { list-style: none; padding: 0; margin: 0; }
+        .user-list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #f1f1f1; cursor: pointer; }
+        .user-list-item:active { background-color: #f9f9f9; }
+        .badge-edit { font-size: 0.75rem; background: var(--accent-color); color: white; padding: 2px 6px; border-radius: 4px; }
+        .btn-new-user { width: 100%; background-color: #28a745; color: white; padding: 12px; margin-bottom: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .btn-delete-user { background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer; margin-left: 10px; }
+
+        /* --- 【広告枠B】完了モーダル内広告 --- */
+        .ad-in-modal {
+            margin: 20px 0; background: #f9f9f9; padding: 10px; border-radius: 8px;
+            display: flex; justify-content: center; align-items: center; min-height: 250px;
+        }
+        .ad-placeholder-rect {
+            width: 300px; height: 250px; background: #ddd; color: #888;
+            font-size: 0.9rem; display: flex; justify-content: center; align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="header-top">
+            <div class="event-info">
+                <h2 class="event-title" id="eventTitle">読み込み中...</h2>
+                <div id="eventMemoDisplay" class="event-memo"></div>
+            </div>
+            <div class="header-actions">
+                <button class="btn-list" style="background:#28a745; color:white;" onclick="goToTop()">＋ 新規作成</button>
+                <button class="btn-help" onclick="goToEditPage()">✏️</button>
+                <button class="btn-help" onclick="openHelpModal()">？</button>
+                <button class="btn-list" onclick="openUserListModal()">👥 回答一覧</button>
+            </div>
+        </div>
+        <div class="user-input-area">
+            <input type="text" id="userName" class="name-input" placeholder="あなたのお名前">
+            <button class="btn-save" id="btnSave">保存</button>
+        </div>
+        <div style="font-size:0.75rem; color:#666; text-align:center; margin-top:5px;">
+            <span id="statusMsg">データを読み込んでいます...</span>
+        </div>
+    </div>
+
+    <div class="ad-banner-top">
+        <div class="ad-placeholder">広告枠（ヘッダー下）</div>
+        </div>
+
+    <div class="matrix-container" id="matrix">
+        <table id="scheduleTable"></table>
+    </div>
+
+    <div class="control-panel">
+        <div class="pen-group">
+            <button class="pen-btn pen-o active" onclick="setPen('o')">◯</button>
+            <button class="pen-btn pen-tri" onclick="setPen('tri')">△</button>
+            <button class="pen-btn pen-x" onclick="setPen('x')">×</button>
+        </div>
+        <div class="mode-switch">
+            <span class="switch-label">入力</span>
+            <label class="toggle">
+                <input type="checkbox" id="paintModeCheck">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="content-overlay" id="contentOverlay" onclick="closeAllModals()"></div>
+
+    <div class="modal-window" id="detailModal">
+        <h3 class="modal-title" id="detailModalTitle">日時詳細</h3>
+        <ul class="user-list" id="detailList"></ul>
+        <button class="modal-close" onclick="closeAllModals()">閉じる</button>
+    </div>
+
+    <div class="modal-window" id="helpModal">
+        <h3 class="modal-title">📌 使い方ガイド</h3>
+        <div class="help-section"><div class="help-head">✏️ 入力方法</div><p class="help-text"><span class="help-tag">入力ON</span>でなぞると連続入力できます。同じペンでなぞると消えます。</p></div>
+        <div class="help-section"><div class="help-head">👀 詳細を見る</div><p class="help-text"><span class="help-tag">入力OFF</span>でマスをタップするとメンバー詳細が見れます。</p></div>
+        <div class="help-section"><div class="help-head">👥 修正・代理</div><p class="help-text">「回答一覧」から名前を選んで修正できます。「新しく入力」で代理入力できます。</p></div>
+        <button class="modal-close" onclick="closeAllModals()">閉じる</button>
+    </div>
+
+    <div class="modal-window" id="userListModal">
+        <h3 class="modal-title">回答者一覧・編集</h3>
+        <p style="font-size:0.85rem; color:#666; margin-bottom:15px;">名前タップで修正、削除で取り消し。<br>代理入力は「新しく入力」から。</p>
+        <button class="btn-new-user" onclick="switchToNewUser()">＋ 新しく入力する</button>
+        <ul class="user-list" id="userSelectList"></ul>
+        <button class="modal-close" onclick="closeAllModals()">閉じる</button>
+    </div>
+
+    <div class="modal-window" id="successModal">
+        <h3 class="modal-title">✅ 保存しました！</h3>
+        <p style="font-size:0.9rem; text-align:center;">回答ありがとうございます。</p>
+        
+        <div class="ad-in-modal">
+            <div class="ad-placeholder-rect">広告枠（完了画面）<br>300x250推奨</div>
+            </div>
+
+        <button class="btn-new-user" onclick="closeAllModals()">閉じる</button>
+        <button class="btn-list" style="width:100%; margin-top:10px; justify-content:center;" onclick="goToTop()">あなたもイベントを作る</button>
+    </div>
+
+    <div id="systemOverlay" class="system-overlay">
+        <div class="system-box">
+            <p id="systemMessage" class="system-text"></p>
+            <div class="system-btn-group" id="systemBtnGroup"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // -----------------------------------------------------
+        // ▼▼▼ firebaseConfig ▼▼▼
+        // -----------------------------------------------------
+        const firebaseConfig = {
+          apiKey: "AIzaSyDjC31VRAcCWdnCtxz4mZMn5F8NAMe5h5o",
+          authDomain: "schedule-4e6db.firebaseapp.com",
+          projectId: "schedule-4e6db",
+          storageBucket: "schedule-4e6db.firebasestorage.app",
+          messagingSenderId: "1030849641074",
+          appId: "1:1030849641074:web:f9285a6b475d7ee540e0eb"
+        };
+        // -----------------------------------------------------
+
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, getDoc, collection, setDoc, deleteDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const systemOverlay = document.getElementById('systemOverlay');
+        const systemMessage = document.getElementById('systemMessage');
+        const systemBtnGroup = document.getElementById('systemBtnGroup');
+
+        window.alert = function(message) {
+            systemMessage.textContent = message;
+            systemBtnGroup.innerHTML = `<button class="system-btn btn-ok" onclick="closeSystemModal()">OK</button>`;
+            systemOverlay.classList.add('is-active');
+        };
+
+        window.showConfirm = function(message, onYes) {
+            systemMessage.textContent = message;
+            systemBtnGroup.innerHTML = `
+                <button class="system-btn btn-cancel" id="btnConfirmNo">キャンセル</button>
+                <button class="system-btn btn-ok" id="btnConfirmYes">実行</button>
+            `;
+            systemOverlay.classList.add('is-active');
+            document.getElementById('btnConfirmNo').onclick = closeSystemModal;
+            document.getElementById('btnConfirmYes').onclick = function() {
+                closeSystemModal();
+                if(onYes) onYes();
+            };
+        };
+        window.closeSystemModal = function() { systemOverlay.classList.remove('is-active'); };
+
+        const eventTitleEl = document.getElementById('eventTitle');
+        const eventMemoEl = document.getElementById('eventMemoDisplay'); 
+        const tableEl = document.getElementById('scheduleTable');
+        const statusMsg = document.getElementById('statusMsg');
+        const paintCheck = document.getElementById('paintModeCheck');
+        const matrixContainer = document.getElementById('matrix');
+        const btnSave = document.getElementById('btnSave');
+        const userNameInput = document.getElementById('userName');
+
+        let eventId = new URLSearchParams(window.location.search).get('id');
+        let candidates = []; let allAnswers = {}; let myMatrix = {};   
+        let currentUid = null; let currentPen = 'o'; let dragAction = null; let lastTouchedCell = null;
+
+        window.setPen = (type) => {
+            currentPen = type;
+            document.querySelectorAll('.pen-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.pen-${type}`).classList.add('active');
+        };
+
+        window.closeAllModals = () => {
+            document.getElementById('contentOverlay').style.display = 'none';
+            document.getElementById('detailModal').style.display = 'none';
+            document.getElementById('userListModal').style.display = 'none';
+            document.getElementById('helpModal').style.display = 'none';
+            document.getElementById('successModal').style.display = 'none'; // 追加
+        };
+        const openModalBase = (id) => {
+            document.getElementById('contentOverlay').style.display = 'block';
+            document.getElementById(id).style.display = 'block';
+        };
+        window.openHelpModal = () => openModalBase('helpModal');
+        window.openUserListModal = renderUserListModal;
+        window.switchToNewUser = setupNewUser;
+        window.loadUserToEdit = loadUserToEdit;
+        window.deleteUser = deleteUser;
+
+        async function init() {
+            if (!eventId) { eventTitleEl.innerText = "エラー: IDなし"; return; }
+            try {
+                const eventRef = doc(db, "events", eventId);
+                const eventSnap = await getDoc(eventRef);
+                if (!eventSnap.exists()) { eventTitleEl.innerText = "イベントが見つかりません"; return; }
+                const eventData = eventSnap.data();
+                eventTitleEl.innerText = eventData.title;
+                
+                if (eventData.memo) {
+                    eventMemoEl.textContent = eventData.memo;
+                    eventMemoEl.style.display = "block";
+                }
+
+                candidates = eventData.candidates;
+                renderTableStructure();
+
+                const answersRef = collection(db, "events", eventId, "answers");
+                onSnapshot(answersRef, (snapshot) => {
+                    allAnswers = {}; snapshot.forEach(doc => { allAnswers[doc.id] = doc.data(); });
+                    statusMsg.innerText = `${Object.keys(allAnswers).length}人の回答`;
+                    if (currentUid && allAnswers[currentUid]) { myMatrix = { ...allAnswers[currentUid].matrix }; }
+                    updateHeatmap(); highlightMySelection(); 
+                });
+
+                const savedUid = localStorage.getItem(`uid_${eventId}`);
+                if (savedUid) {
+                    currentUid = savedUid;
+                    const savedName = localStorage.getItem(`name_${eventId}`);
+                    if(savedName) userNameInput.value = savedName;
+                } else { setupNewUser(); }
+            } catch (e) { console.error(e); eventTitleEl.innerText = "読み込みエラー"; }
+        }
+
+        window.goToTop = () => {
+            let baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/')) + '/';
+            window.location.href = baseUrl; 
+        };
+
+        window.goToEditPage = () => {
+            window.showConfirm("イベント内容（日時やタイトル）を編集しますか？\n※管理者用の機能です", () => {
+                const currentUrl = window.location.href;
+                let editUrl = currentUrl.replace('event.html', 'index.html');
+                if (editUrl.includes('?')) { editUrl += "&mode=edit"; } else { editUrl += "?mode=edit"; }
+                window.location.href = editUrl;
+            });
+        };
+
+        function setupNewUser() {
+            currentUid = 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem(`uid_${eventId}`, currentUid);
+            localStorage.removeItem(`name_${eventId}`);
+            userNameInput.value = "";
+            userNameInput.classList.remove("editing");
+            myMatrix = {};
+            window.closeAllModals();
+            highlightMySelection();
+        }
+
+        function loadUserToEdit(uid) {
+            if (!allAnswers[uid]) return;
+            currentUid = uid;
+            localStorage.setItem(`uid_${eventId}`, currentUid);
+            const data = allAnswers[uid];
+            userNameInput.value = data.name;
+            localStorage.setItem(`name_${eventId}`, data.name);
+            myMatrix = data.matrix ? { ...data.matrix } : {};
+            userNameInput.classList.add("editing");
+            window.closeAllModals();
+            highlightMySelection();
+            alert(`${data.name} さんの回答を読み込みました`);
+        }
+
+        function deleteUser(uid) {
+            window.showConfirm("本当に削除しますか？\nこの操作は取り消せません。", async () => {
+                try {
+                    await deleteDoc(doc(db, "events", eventId, "answers", uid));
+                    if(uid === currentUid) { setupNewUser(); } else { renderUserListModal(); }
+                } catch(e) { alert("削除エラー: " + e); }
+            });
+        }
+
+        function renderTableStructure() {
+            let minStart = 24, maxEnd = 0;
+            const uniqueDates = [...new Set(candidates.map(c => c.date))];
+            
+            candidates.forEach(c => { 
+                if (c.start < minStart) minStart = c.start; 
+                let effectiveEnd = (c.end === 23) ? 24 : c.end;
+                if (effectiveEnd > maxEnd) maxEnd = effectiveEnd;
+            });
+
+            let html = `<thead><tr><th style="width:50px;">時間</th>`;
+            uniqueDates.forEach(d => {
+                const dateStr = new Date(d).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric', weekday:'short'});
+                html += `<th>${dateStr}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            for (let t = minStart; t < maxEnd; t++) {
+                html += `<tr><th>${t}:00</th>`;
+                uniqueDates.forEach(date => {
+                    const isActive = candidates.some(c => {
+                        let effectiveEnd = (c.end === 23) ? 24 : c.end;
+                        return c.date === date && t >= c.start && t < effectiveEnd;
+                    });
+
+                    const cellKey = `${date}_${t}`;
+                    if (isActive) { html += `<td data-key="${cellKey}" class="bg-none"><div class="cell-content"><span class="c-o">●0</span><span class="c-tri">▲0</span><span class="c-x">×0</span></div></td>`; } 
+                    else { html += `<td class="disabled-cell"></td>`; }
+                });
+                html += `</tr>`;
+            }
+            html += `</tbody>`;
+            tableEl.innerHTML = html;
+        }
+
+        function updateHeatmap() {
+            const counts = {}; 
+            Object.values(allAnswers).forEach(ans => {
+                if (!ans.matrix) return;
+                Object.entries(ans.matrix).forEach(([key, val]) => {
+                    if (!counts[key]) counts[key] = {o:0, tri:0, x:0};
+                    if (val === 'o') counts[key].o++; if (val === 'tri') counts[key].tri++; if (val === 'x') counts[key].x++;
+                });
+            });
+            document.querySelectorAll('td[data-key]').forEach(td => {
+                const key = td.dataset.key;
+                const c = counts[key] || {o:0, tri:0, x:0};
+                const total = c.o + c.tri + c.x;
+                td.querySelector('.cell-content').innerHTML = `<span class="c-o">●${c.o}</span><span class="c-tri">▲${c.tri}</span><span class="c-x">×${c.x}</span>`;
+                td.classList.remove('bg-high', 'bg-mid', 'bg-low', 'bg-none');
+                if (total > 0) {
+                    const score = c.o * 2 + c.tri * 1; const maxScore = Object.keys(allAnswers).length * 2;
+                    if (maxScore > 0 && score / maxScore > 0.8) td.classList.add('bg-high');
+                    else if (c.x > 0 && c.x > Object.keys(allAnswers).length / 2) td.classList.add('bg-low');
+                    else td.classList.add('bg-mid');
+                } else { td.classList.add('bg-none'); }
+            });
+        }
+
+        function highlightMySelection() {
+            document.querySelectorAll('td[data-key]').forEach(td => {
+                const key = td.dataset.key;
+                td.classList.remove('my-selection-o', 'my-selection-tri', 'my-selection-x');
+                const myVal = myMatrix[key];
+                if (myVal) { td.classList.add(`my-selection-${myVal}`); }
+            });
+        }
+
+        function applyMyInput(td, action) {
+            const key = td.dataset.key;
+            if (action === 'erase') { delete myMatrix[key]; } else { myMatrix[key] = currentPen; }
+            highlightMySelection();
+        }
+
+        matrixContainer.addEventListener('touchstart', function(e) {
+            if (!paintCheck.checked) return;
+            const td = e.target.closest('td');
+            if (td && !td.classList.contains('disabled-cell')) {
+                e.preventDefault();
+                const key = td.dataset.key;
+                const currentVal = myMatrix[key];
+                if (currentVal === currentPen) dragAction = 'erase'; else dragAction = 'paint';
+                applyMyInput(td, dragAction); lastTouchedCell = td;
+            }
+        }, { passive: false });
+
+        matrixContainer.addEventListener('touchmove', function(e) {
+            if (!paintCheck.checked || !dragAction) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            const td = target ? target.closest('td') : null;
+            if (td && td !== lastTouchedCell && matrixContainer.contains(td) && !td.classList.contains('disabled-cell')) {
+                applyMyInput(td, dragAction); lastTouchedCell = td;
+            }
+        }, { passive: false });
+
+        matrixContainer.addEventListener('touchend', () => { dragAction = null; lastTouchedCell = null; });
+
+        matrixContainer.addEventListener('click', function(e) {
+            const td = e.target.closest('td');
+            if (!td || td.classList.contains('disabled-cell')) return;
+            if (paintCheck.checked) {
+                const key = td.dataset.key;
+                if (myMatrix[key] === currentPen) applyMyInput(td, 'erase'); else applyMyInput(td, 'paint');
+            } else { showDetailModal(td.dataset.key); }
+        });
+
+        function showDetailModal(key) {
+            const [date, time] = key.split('_');
+            document.getElementById('detailModalTitle').innerText = `${date} ${time}:00`;
+            const list = document.getElementById('detailList');
+            list.innerHTML = "";
+            if (Object.keys(allAnswers).length === 0) list.innerHTML = "<li>回答なし</li>";
+            Object.values(allAnswers).forEach(ans => {
+                const val = ans.matrix ? ans.matrix[key] : null;
+                let statusIcon = "－", color = "#ccc";
+                if(val === 'o') { statusIcon = "◯"; color = "green"; }
+                if(val === 'tri') { statusIcon = "△"; color = "#b8860b"; }
+                if(val === 'x') { statusIcon = "✕"; color = "red"; }
+                list.innerHTML += `<li class="user-list-item"><span>${ans.name || '名無し'}</span><span style="color:${color}; font-weight:bold;">${statusIcon}</span></li>`;
+            });
+            openModalBase('detailModal');
+        }
+
+        function renderUserListModal() {
+            const list = document.getElementById('userSelectList');
+            list.innerHTML = "";
+            const uids = Object.keys(allAnswers);
+            if (uids.length === 0) { list.innerHTML = "<li style='padding:10px; color:#666; text-align:center'>回答なし</li>"; }
+            uids.forEach(uid => {
+                const ans = allAnswers[uid];
+                const isMe = (uid === currentUid);
+                const badge = isMe ? `<span class="badge-edit">編集中</span>` : '';
+                const li = document.createElement('li');
+                li.className = "user-list-item";
+                li.innerHTML = `<div style="flex:1" onclick="loadUserToEdit('${uid}')"><span style="font-weight:bold; font-size:1.1rem;">${ans.name}</span>${badge}</div><button class="btn-delete-user" onclick="deleteUser('${uid}')">削除</button>`;
+                list.appendChild(li);
+            });
+            openModalBase('userListModal');
+        }
+
+        btnSave.addEventListener('click', async () => {
+            const name = userNameInput.value.trim();
+            if (!name) { alert("お名前を入力してください"); return; }
+            
+            const executeSave = async () => {
+                btnSave.disabled = true; btnSave.innerText = "保存中...";
+                try {
+                    const docRef = doc(db, "events", eventId, "answers", currentUid);
+                    await setDoc(docRef, { name: name, matrix: myMatrix, updatedAt: serverTimestamp() });
+                    localStorage.setItem(`name_${eventId}`, name);
+                    userNameInput.classList.remove("editing");
+                    
+                    // 【修正】アラートではなく、広告付きモーダルを表示
+                    openModalBase('successModal');
+                    // alert("保存しました！"); は削除
+                    
+                } catch (e) { console.error(e); alert("保存失敗: " + e); } 
+                finally { btnSave.disabled = false; btnSave.innerText = "保存"; }
+            };
+
+            if (Object.keys(myMatrix).length === 0) { window.showConfirm("日程が未選択ですが保存しますか？", executeSave); } 
+            else { executeSave(); }
+        });
+
+        init();
+    </script>
+</body>
+</html>
