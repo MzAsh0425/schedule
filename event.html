@@ -294,7 +294,7 @@
         <div id="eventMemoDisplay" class="event-memo"></div>
 
         <div class="user-input-area">
-            <input type="text" id="userName" class="name-input" placeholder="あなたのお名前">
+            <input type="text" id="userName" class="name-input" placeholder="あなたのお名前" autocomplete="name">
             <button class="btn-save" id="btnSave">保存</button>
         </div>
         <div style="font-size:0.75rem; color:#666; text-align:center; margin-top:5px;">
@@ -757,10 +757,11 @@
 
         window.goToEditPage = () => {
             window.showConfirm("イベント内容（日時やタイトル）を編集しますか？\n※管理者用の機能です", () => {
-                const currentUrl = window.location.href;
-                let editUrl = currentUrl.replace('event.html', 'index.html');
-                if (editUrl.includes('?')) { editUrl += "&mode=edit"; } else { editUrl += "?mode=edit"; }
-                window.location.href = editUrl;
+                const base = window.location.origin + window.location.pathname.replace('event.html', 'index.html');
+                const params = new URLSearchParams(window.location.search);
+                params.set('mode', 'edit');
+                const hash = window.location.hash;
+                window.location.href = base + '?' + params.toString() + hash;
             });
         };
 
