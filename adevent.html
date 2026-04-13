@@ -159,7 +159,7 @@
             </div>
         </div>
         <div class="user-input-area">
-            <input type="text" id="userName" class="name-input" placeholder="あなたのお名前">
+            <input type="text" id="userName" class="name-input" placeholder="あなたのお名前" autocomplete="name" maxlength="50">
             <button class="btn-save" id="btnSave">保存</button>
         </div>
         <div style="font-size:0.75rem; color:#666; text-align:center; margin-top:5px;">
@@ -167,8 +167,7 @@
         </div>
     </div>
 
-    <div class="ad-banner-top">
-        <div class="ad-placeholder">広告枠（ヘッダー下）</div>
+    <div class="ad-banner-top" style="display:none;">
         </div>
 
     <div class="matrix-container" id="matrix">
@@ -218,12 +217,12 @@
         <h3 class="modal-title">✅ 保存しました！</h3>
         <p style="font-size:0.9rem; text-align:center;">回答ありがとうございます。</p>
         
-        <div class="ad-in-modal">
-            <div class="ad-placeholder-rect">広告枠（完了画面）<br>300x250推奨</div>
+        <div class="ad-in-modal" style="display:none;">
             </div>
 
         <button class="btn-new-user" onclick="closeAllModals()">閉じる</button>
         <button class="btn-list" style="width:100%; margin-top:10px; justify-content:center;" onclick="goToTop()">あなたもイベントを作る</button>
+        <div style="text-align:center; margin-top:12px; font-size:0.75rem;"><a href="privacy.html" target="_blank" style="color:#999;">プライバシーポリシー</a></div>
     </div>
 
     <div id="systemOverlay" class="system-overlay">
@@ -233,6 +232,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script type="module">
         // -----------------------------------------------------
         // ▼▼▼ firebaseConfig ▼▼▼
@@ -248,7 +248,7 @@
         // -----------------------------------------------------
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, getDoc, collection, setDoc, deleteDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, collection, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -287,8 +287,71 @@
         const btnSave = document.getElementById('btnSave');
         const userNameInput = document.getElementById('userName');
 
+        // --- 暗号化ユーティリティ（IV付き + 旧形式後方互換） ---
+        function encrypt(text, keyHex) {
+            if (!text) return '';
+            const key = CryptoJS.enc.Hex.parse(keyHex);
+            const iv = CryptoJS.lib.WordArray.random(16);
+            const encrypted = CryptoJS.AES.encrypt(text, key, { iv: iv });
+            return iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.toString();
+        }
+        function decrypt(cipherText, keyHex) {
+            if (!cipherText) return '';
+            try {
+                if (cipherText.includes(':')) {
+                    const [ivHex, ct] = cipherText.split(':');
+                    const key = CryptoJS.enc.Hex.parse(keyHex);
+                    const iv = CryptoJS.enc.Hex.parse(ivHex);
+                    const bytes = CryptoJS.AES.decrypt(ct, key, { iv: iv });
+                    return bytes.toString(CryptoJS.enc.Utf8);
+                }
+                const bytes = CryptoJS.AES.decrypt(cipherText, keyHex);
+                return bytes.toString(CryptoJS.enc.Utf8);
+            } catch (e) { return cipherText; }
+        }
+        function getKeyFromHash() {
+            const hash = window.location.hash;
+            const match = hash.match(/key=([^&]+)/);
+            return match ? match[1] : null;
+        }
+        const encryptionKey = getKeyFromHash();
+
+        // --- セキュリティユーティリティ ---
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+        function generateUid() {
+            const arr = new Uint8Array(16);
+            crypto.getRandomValues(arr);
+            return 'user_' + Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function generateToken() {
+            const arr = new Uint8Array(32);
+            crypto.getRandomValues(arr);
+            return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function validateName(name) {
+            if (!name) return 'お名前を入力してください';
+            if (name.length > 50) return 'お名前は50文字以内で入力してください';
+            return null;
+        }
+        function getDeleteToken(uid) {
+            const key = `deleteToken_${eventId}_${uid}`;
+            let token = localStorage.getItem(key);
+            if (!token) {
+                token = generateToken();
+                localStorage.setItem(key, token);
+            }
+            return token;
+        }
+        function decryptName(encName) {
+            return encryptionKey ? decrypt(encName, encryptionKey) : encName;
+        }
+
         let eventId = new URLSearchParams(window.location.search).get('id');
-        let candidates = []; let allAnswers = {}; let myMatrix = {};   
+        let candidates = []; let allAnswers = {}; let myMatrix = {};
         let currentUid = null; let currentPen = 'o'; let dragAction = null; let lastTouchedCell = null;
 
         window.setPen = (type) => {
@@ -321,10 +384,11 @@
                 const eventSnap = await getDoc(eventRef);
                 if (!eventSnap.exists()) { eventTitleEl.innerText = "イベントが見つかりません"; return; }
                 const eventData = eventSnap.data();
-                eventTitleEl.innerText = eventData.title;
-                
+                eventTitleEl.innerText = encryptionKey ? decrypt(eventData.title, encryptionKey) : eventData.title;
+
                 if (eventData.memo) {
-                    eventMemoEl.textContent = eventData.memo;
+                    const decMemo = encryptionKey ? decrypt(eventData.memo, encryptionKey) : eventData.memo;
+                    eventMemoEl.textContent = decMemo;
                     eventMemoEl.style.display = "block";
                 }
 
@@ -333,10 +397,17 @@
 
                 const answersRef = collection(db, "events", eventId, "answers");
                 onSnapshot(answersRef, (snapshot) => {
-                    allAnswers = {}; snapshot.forEach(doc => { allAnswers[doc.id] = doc.data(); });
+                    allAnswers = {};
+                    snapshot.forEach(d => {
+                        const data = d.data();
+                        if (!data.isDeleted) allAnswers[d.id] = data;
+                    });
                     statusMsg.innerText = `${Object.keys(allAnswers).length}人の回答`;
                     if (currentUid && allAnswers[currentUid]) { myMatrix = { ...allAnswers[currentUid].matrix }; }
-                    updateHeatmap(); highlightMySelection(); 
+                    updateHeatmap(); highlightMySelection();
+                }, (error) => {
+                    console.error("onSnapshot error:", error);
+                    statusMsg.innerText = "接続エラー — ページを再読み込みしてください";
                 });
 
                 const savedUid = localStorage.getItem(`uid_${eventId}`);
@@ -345,7 +416,7 @@
                     const savedName = localStorage.getItem(`name_${eventId}`);
                     if(savedName) userNameInput.value = savedName;
                 } else { setupNewUser(); }
-            } catch (e) { console.error(e); eventTitleEl.innerText = "読み込みエラー"; }
+            } catch (e) { console.error("init error:", e); eventTitleEl.innerText = "読み込みエラー"; }
         }
 
         window.goToTop = () => {
@@ -355,15 +426,16 @@
 
         window.goToEditPage = () => {
             window.showConfirm("イベント内容（日時やタイトル）を編集しますか？\n※管理者用の機能です", () => {
-                const currentUrl = window.location.href;
-                let editUrl = currentUrl.replace('event.html', 'index.html');
-                if (editUrl.includes('?')) { editUrl += "&mode=edit"; } else { editUrl += "?mode=edit"; }
-                window.location.href = editUrl;
+                const base = window.location.origin + window.location.pathname.replace('adevent.html', 'index.html');
+                const params = new URLSearchParams(window.location.search);
+                params.set('mode', 'edit');
+                const hash = window.location.hash;
+                window.location.href = base + '?' + params.toString() + hash;
             });
         };
 
         function setupNewUser() {
-            currentUid = 'user_' + Math.random().toString(36).substr(2, 9);
+            currentUid = generateUid();
             localStorage.setItem(`uid_${eventId}`, currentUid);
             localStorage.removeItem(`name_${eventId}`);
             userNameInput.value = "";
@@ -378,21 +450,29 @@
             currentUid = uid;
             localStorage.setItem(`uid_${eventId}`, currentUid);
             const data = allAnswers[uid];
-            userNameInput.value = data.name;
-            localStorage.setItem(`name_${eventId}`, data.name);
+            const plainName = decryptName(data.name);
+            userNameInput.value = plainName;
+            localStorage.setItem(`name_${eventId}`, plainName);
             myMatrix = data.matrix ? { ...data.matrix } : {};
             userNameInput.classList.add("editing");
             window.closeAllModals();
             highlightMySelection();
-            alert(`${data.name} さんの回答を読み込みました`);
+            alert(`${plainName} さんの回答を読み込みました`);
         }
 
         function deleteUser(uid) {
             window.showConfirm("本当に削除しますか？\nこの操作は取り消せません。", async () => {
                 try {
-                    await deleteDoc(doc(db, "events", eventId, "answers", uid));
+                    const existing = allAnswers[uid];
+                    if (!existing) return;
+                    const docRef = doc(db, "events", eventId, "answers", uid);
+                    await setDoc(docRef, {
+                        ...existing,
+                        isDeleted: true,
+                        updatedAt: serverTimestamp()
+                    });
                     if(uid === currentUid) { setupNewUser(); } else { renderUserListModal(); }
-                } catch(e) { alert("削除エラー: " + e); }
+                } catch(e) { console.error("deleteUser error:", e); alert("削除に失敗しました"); }
             });
         }
 
@@ -516,7 +596,16 @@
                 if(val === 'o') { statusIcon = "◯"; color = "green"; }
                 if(val === 'tri') { statusIcon = "△"; color = "#b8860b"; }
                 if(val === 'x') { statusIcon = "✕"; color = "red"; }
-                list.innerHTML += `<li class="user-list-item"><span>${ans.name || '名無し'}</span><span style="color:${color}; font-weight:bold;">${statusIcon}</span></li>`;
+                const li = document.createElement('li');
+                li.className = 'user-list-item';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = decryptName(ans.name) || '名無し';
+                const statusSpan = document.createElement('span');
+                statusSpan.style.cssText = `color:${color}; font-weight:bold;`;
+                statusSpan.textContent = statusIcon;
+                li.appendChild(nameSpan);
+                li.appendChild(statusSpan);
+                list.appendChild(li);
             });
             openModalBase('detailModal');
         }
@@ -529,10 +618,27 @@
             uids.forEach(uid => {
                 const ans = allAnswers[uid];
                 const isMe = (uid === currentUid);
-                const badge = isMe ? `<span class="badge-edit">編集中</span>` : '';
                 const li = document.createElement('li');
                 li.className = "user-list-item";
-                li.innerHTML = `<div style="flex:1" onclick="loadUserToEdit('${uid}')"><span style="font-weight:bold; font-size:1.1rem;">${ans.name}</span>${badge}</div><button class="btn-delete-user" onclick="deleteUser('${uid}')">削除</button>`;
+                const editDiv = document.createElement('div');
+                editDiv.style.flex = '1';
+                editDiv.addEventListener('click', () => loadUserToEdit(uid));
+                const nameSpan = document.createElement('span');
+                nameSpan.style.cssText = 'font-weight:bold; font-size:1.1rem;';
+                nameSpan.textContent = decryptName(ans.name);
+                editDiv.appendChild(nameSpan);
+                if (isMe) {
+                    const badgeSpan = document.createElement('span');
+                    badgeSpan.className = 'badge-edit';
+                    badgeSpan.textContent = '編集中';
+                    editDiv.appendChild(badgeSpan);
+                }
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-delete-user';
+                delBtn.textContent = '削除';
+                delBtn.addEventListener('click', () => deleteUser(uid));
+                li.appendChild(editDiv);
+                li.appendChild(delBtn);
                 list.appendChild(li);
             });
             openModalBase('userListModal');
@@ -540,21 +646,22 @@
 
         btnSave.addEventListener('click', async () => {
             const name = userNameInput.value.trim();
-            if (!name) { alert("お名前を入力してください"); return; }
+            const nameError = validateName(name);
+            if (nameError) { alert(nameError); return; }
             
             const executeSave = async () => {
                 btnSave.disabled = true; btnSave.innerText = "保存中...";
                 try {
+                    const encName = encryptionKey ? encrypt(name, encryptionKey) : name;
+                    const deleteToken = getDeleteToken(currentUid);
                     const docRef = doc(db, "events", eventId, "answers", currentUid);
-                    await setDoc(docRef, { name: name, matrix: myMatrix, updatedAt: serverTimestamp() });
+                    await setDoc(docRef, { name: encName, matrix: myMatrix, deleteToken: deleteToken, updatedAt: serverTimestamp() });
                     localStorage.setItem(`name_${eventId}`, name);
                     userNameInput.classList.remove("editing");
-                    
-                    // 【修正】アラートではなく、広告付きモーダルを表示
+
                     openModalBase('successModal');
-                    // alert("保存しました！"); は削除
-                    
-                } catch (e) { console.error(e); alert("保存失敗: " + e); } 
+
+                } catch (e) { console.error("save error:", e); alert("保存に失敗しました。通信環境を確認してください"); }
                 finally { btnSave.disabled = false; btnSave.innerText = "保存"; }
             };
 

@@ -6,13 +6,36 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true;
 
-      allow create: if request.resource.data.keys().hasAll(['title', 'candidates'])
+      allow create: if request.resource.data.keys().hasAll(['title', 'candidates', 'ownerToken'])
+                    && request.resource.data.ownerToken is string
+                    && request.resource.data.ownerToken.size() == 64
                     && request.resource.data.title is string
-                    && request.resource.data.candidates is list;
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.title.size() <= 500
+                    && request.resource.data.candidates is list
+                    && request.resource.data.candidates.size() > 0
+                    && request.resource.data.candidates.size() <= 100
+                    && (!request.resource.data.keys().hasAny(['memo']) || (
+                         request.resource.data.memo is string
+                         && request.resource.data.memo.size() <= 2000
+                       ));
 
+      // ownerToken: 既存ドキュメントに存在する場合は一致必須（後方互換対応）
       allow update: if request.resource.data.keys().hasAll(['title', 'candidates'])
                     && request.resource.data.title is string
-                    && request.resource.data.candidates is list;
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.title.size() <= 500
+                    && request.resource.data.candidates is list
+                    && request.resource.data.candidates.size() > 0
+                    && request.resource.data.candidates.size() <= 100
+                    && (!request.resource.data.keys().hasAny(['memo']) || (
+                         request.resource.data.memo is string
+                         && request.resource.data.memo.size() <= 2000
+                       ))
+                    && (!resource.data.keys().hasAny(['ownerToken']) || (
+                         request.resource.data.ownerToken is string
+                         && request.resource.data.ownerToken == resource.data.ownerToken
+                       ));
 
       allow delete: if false;
 
@@ -20,14 +43,38 @@ service cloud.firestore {
       match /answers/{answerId} {
         allow read: if true;
 
-        allow create: if request.resource.data.keys().hasAny(['name'])
-                      && request.resource.data.name is string;
+        allow create: if request.resource.data.keys().hasAll(['name', 'deleteToken'])
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() <= 200
+                      && request.resource.data.deleteToken is string
+                      && request.resource.data.deleteToken.size() == 64
+                      && (!request.resource.data.keys().hasAny(['matrix']) || (
+                           request.resource.data.matrix is map
+                           && request.resource.data.matrix.size() <= 500
+                         ));
 
-        allow update: if request.resource.data.keys().hasAny(['name'])
-                      && request.resource.data.name is string;
+        // deleteToken: 既存ドキュメントに存在する場合は一致必須（後方互換対応）
+        allow update: if request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() <= 200
+                      && (!request.resource.data.keys().hasAny(['matrix']) || (
+                           request.resource.data.matrix is map
+                           && request.resource.data.matrix.size() <= 500
+                         ))
+                      && (!resource.data.keys().hasAny(['deleteToken']) || (
+                           request.resource.data.deleteToken is string
+                           && request.resource.data.deleteToken == resource.data.deleteToken
+                         ));
 
-        allow delete: if true;
+        // 物理削除は禁止（論理削除のみ: isDeleted フラグで管理）
+        allow delete: if false;
       }
+    }
+
+    // 上記以外のコレクションへのアクセスを拒否
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
