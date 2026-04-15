@@ -63,8 +63,8 @@
             overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: 80px; 
         }
 
-        table { border-collapse: separate; border-spacing: 0; width: 100%; }
-        th, td { width: var(--cell-size); height: var(--cell-size); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); text-align: center; font-size: 0.75rem; padding: 0; box-sizing: border-box; vertical-align: middle; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
+        th, td { height: var(--cell-size); border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); text-align: center; font-size: 0.75rem; padding: 0; box-sizing: border-box; vertical-align: middle; overflow: hidden; }
         thead th { position: sticky; top: 0; background: var(--header-bg); z-index: 10; font-weight: bold; height: 40px; border-bottom: 2px solid #ccc; }
         thead th:first-child { left: 0; z-index: 20; background: var(--header-bg); }
         tbody th { position: sticky; left: 0; background: var(--header-bg); z-index: 5; font-weight: normal; font-size: 0.8rem; border-right: 2px solid #ccc; }
@@ -486,7 +486,12 @@
                 if (effectiveEnd > maxEnd) maxEnd = effectiveEnd;
             });
 
-            let html = `<thead><tr><th style="width:50px;">時間</th>`;
+            const dateCount = uniqueDates.length;
+            const colWidth = dateCount > 0 ? `${(100 - 15) / dateCount}%` : 'auto';
+            let html = `<colgroup><col style="width:50px;">`;
+            uniqueDates.forEach(() => { html += `<col style="width:${colWidth};">`; });
+            html += `</colgroup>`;
+            html += `<thead><tr><th>時間</th>`;
             uniqueDates.forEach(d => {
                 const dateStr = new Date(d).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric', weekday:'short'});
                 html += `<th>${dateStr}</th>`;
