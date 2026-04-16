@@ -6,9 +6,9 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true;
 
-      allow create: if request.resource.data.keys().hasAll(['title', 'candidates', 'ownerToken'])
-                    && request.resource.data.ownerToken is string
-                    && request.resource.data.ownerToken.size() == 64
+      allow create: if request.resource.data.keys().hasAll(['title', 'candidates', 'ownerTokenHash'])
+                    && request.resource.data.ownerTokenHash is string
+                    && request.resource.data.ownerTokenHash.size() == 64
                     && request.resource.data.title is string
                     && request.resource.data.title.size() > 0
                     && request.resource.data.title.size() <= 500
@@ -18,9 +18,10 @@ service cloud.firestore {
                     && (!request.resource.data.keys().hasAny(['memo']) || (
                          request.resource.data.memo is string
                          && request.resource.data.memo.size() <= 2000
-                       ));
+                       ))
+                    && !request.resource.data.keys().hasAny(['ownerToken']);
 
-      // ownerToken: 既存ドキュメントに存在する場合は一致必須（後方互換対応）
+      // ownerTokenHash: 既存ドキュメントに存在する場合は一致必須（後方互換: ownerToken も許容）
       allow update: if request.resource.data.keys().hasAll(['title', 'candidates'])
                     && request.resource.data.title is string
                     && request.resource.data.title.size() > 0
@@ -32,10 +33,18 @@ service cloud.firestore {
                          request.resource.data.memo is string
                          && request.resource.data.memo.size() <= 2000
                        ))
-                    && (!resource.data.keys().hasAny(['ownerToken']) || (
-                         request.resource.data.ownerToken is string
-                         && request.resource.data.ownerToken == resource.data.ownerToken
-                       ));
+                    && !request.resource.data.keys().hasAny(['ownerToken'])
+                    // 新形式: ownerTokenHash で照合
+                    && (
+                         (!resource.data.keys().hasAny(['ownerTokenHash', 'ownerToken']))
+                         || (resource.data.keys().hasAny(['ownerTokenHash'])
+                             && request.resource.data.ownerTokenHash is string
+                             && request.resource.data.ownerTokenHash == resource.data.ownerTokenHash)
+                         // 後方互換: 旧形式 ownerToken が残っている場合
+                         || (resource.data.keys().hasAny(['ownerToken'])
+                             && !resource.data.keys().hasAny(['ownerTokenHash'])
+                             && request.resource.data.ownerTokenHash is string)
+                       );
 
       allow delete: if false;
 
@@ -43,18 +52,19 @@ service cloud.firestore {
       match /answers/{answerId} {
         allow read: if true;
 
-        allow create: if request.resource.data.keys().hasAll(['name', 'deleteToken'])
+        allow create: if request.resource.data.keys().hasAll(['name', 'deleteTokenHash'])
                       && request.resource.data.name is string
                       && request.resource.data.name.size() > 0
                       && request.resource.data.name.size() <= 200
-                      && request.resource.data.deleteToken is string
-                      && request.resource.data.deleteToken.size() == 64
+                      && request.resource.data.deleteTokenHash is string
+                      && request.resource.data.deleteTokenHash.size() == 64
                       && (!request.resource.data.keys().hasAny(['matrix']) || (
                            request.resource.data.matrix is map
                            && request.resource.data.matrix.size() <= 500
-                         ));
+                         ))
+                      && !request.resource.data.keys().hasAny(['deleteToken']);
 
-        // deleteToken: 既存ドキュメントに存在する場合は一致必須（後方互換対応）
+        // deleteTokenHash: 既存ドキュメントに存在する場合は一致必須（後方互換: deleteToken も許容）
         allow update: if request.resource.data.name is string
                       && request.resource.data.name.size() > 0
                       && request.resource.data.name.size() <= 200
@@ -62,10 +72,18 @@ service cloud.firestore {
                            request.resource.data.matrix is map
                            && request.resource.data.matrix.size() <= 500
                          ))
-                      && (!resource.data.keys().hasAny(['deleteToken']) || (
-                           request.resource.data.deleteToken is string
-                           && request.resource.data.deleteToken == resource.data.deleteToken
-                         ));
+                      && !request.resource.data.keys().hasAny(['deleteToken'])
+                      // 新形式: deleteTokenHash で照合
+                      && (
+                           (!resource.data.keys().hasAny(['deleteTokenHash', 'deleteToken']))
+                           || (resource.data.keys().hasAny(['deleteTokenHash'])
+                               && request.resource.data.deleteTokenHash is string
+                               && request.resource.data.deleteTokenHash == resource.data.deleteTokenHash)
+                           // 後方互換: 旧形式 deleteToken が残っている場合
+                           || (resource.data.keys().hasAny(['deleteToken'])
+                               && !resource.data.keys().hasAny(['deleteTokenHash'])
+                               && request.resource.data.deleteTokenHash is string)
+                         );
 
         // 物理削除は禁止（論理削除のみ: isDeleted フラグで管理）
         allow delete: if false;

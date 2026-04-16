@@ -212,6 +212,11 @@
             crypto.getRandomValues(arr);
             return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
         }
+        async function hashToken(token) {
+            const encoded = new TextEncoder().encode(token);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+            return Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
+        }
         function escapeHtml(str) {
             const d = document.createElement('div');
             d.textContent = str;
@@ -271,7 +276,7 @@
 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    ownerToken = data.ownerToken || localStorage.getItem(`ownerToken_${eventId}`);
+                    ownerToken = localStorage.getItem(`ownerToken_${eventId}`);
                     existingCreatedAt = data.createdAt || null;
                     if (encryptionKey) {
                         titleInput.value = decrypt(data.title, encryptionKey);
@@ -399,6 +404,7 @@
 
                 const encTitle = encryptionKey ? encrypt(title, encryptionKey) : title;
                 const encMemo = encryptionKey ? encrypt(memo, encryptionKey) : memo;
+                const ownerTokenHash = await hashToken(ownerToken);
 
                 let targetId = eventId;
                 if (eventId) {
@@ -407,7 +413,7 @@
                         title: encTitle,
                         memo: encMemo,
                         candidates: candidates,
-                        ownerToken: ownerToken,
+                        ownerTokenHash: ownerTokenHash,
                         createdAt: existingCreatedAt,
                         updatedAt: serverTimestamp()
                     });
@@ -418,7 +424,7 @@
                         title: encTitle,
                         memo: encMemo,
                         candidates: candidates,
-                        ownerToken: ownerToken,
+                        ownerTokenHash: ownerTokenHash,
                         createdAt: serverTimestamp()
                     });
                     targetId = docRef.id;

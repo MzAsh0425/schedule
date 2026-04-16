@@ -527,6 +527,11 @@
             crypto.getRandomValues(arr);
             return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
         }
+        async function hashToken(token) {
+            const encoded = new TextEncoder().encode(token);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+            return Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
+        }
         function validateName(name) {
             if (!name) return 'お名前を入力してください';
             if (name.length > 50) return 'お名前は50文字以内で入力してください';
@@ -851,9 +856,13 @@
                 try {
                     const existing = allAnswers[uid];
                     if (!existing) return;
+                    const deleteToken = getDeleteToken(uid);
+                    const deleteTokenHash = await hashToken(deleteToken);
                     const docRef = doc(db, "events", eventId, "answers", uid);
                     await setDoc(docRef, {
-                        ...existing,
+                        name: existing.name,
+                        matrix: existing.matrix || {},
+                        deleteTokenHash: deleteTokenHash,
                         isDeleted: true,
                         updatedAt: serverTimestamp()
                     });
@@ -1078,8 +1087,9 @@
                 try {
                     const encName = encryptionKey ? encrypt(name, encryptionKey) : name;
                     const deleteToken = getDeleteToken(currentUid);
+                    const deleteTokenHash = await hashToken(deleteToken);
                     const docRef = doc(db, "events", eventId, "answers", currentUid);
-                    await setDoc(docRef, { name: encName, matrix: myMatrix, deleteToken: deleteToken, updatedAt: serverTimestamp() });
+                    await setDoc(docRef, { name: encName, matrix: myMatrix, deleteTokenHash: deleteTokenHash, updatedAt: serverTimestamp() });
                     localStorage.setItem(`name_${eventId}`, name);
                     userNameInput.classList.remove("editing");
 
