@@ -431,7 +431,7 @@
 
         window.goToEditPage = () => {
             window.showConfirm("イベント内容（日時やタイトル）を編集しますか？\n※管理者用の機能です", () => {
-                const base = window.location.origin + window.location.pathname.replace('adevent.html', 'index.html');
+                const base = window.location.origin + window.location.pathname.replace('adevent.html', 'create.html');
                 const params = new URLSearchParams(window.location.search);
                 params.set('mode', 'edit');
                 const hash = window.location.hash;

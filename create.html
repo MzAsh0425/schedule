@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>イベント作成・編集</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f4f9; padding: 20px; color: #333;
+            max-width: 800px; margin: 0 auto;
+        }
+        h1 { font-size: 1.5rem; color: #2c3e50; }
+        
+        .form-card {
+            background: white; padding: 20px; border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px;
+        }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.9rem; }
+        input[type="text"], input[type="date"], select, textarea {
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: 1rem; box-sizing: border-box; background: #fff;
+            -webkit-appearance: none; appearance: none;
+        }
+        /* メモ欄のスタイル */
+        textarea { min-height: 80px; resize: vertical; line-height: 1.5; font-family: inherit; }
+        /* 時間選択の高さ確保 */
+        select { min-height: 44px; }
+
+        .date-adder {
+            display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;
+            background: #eef2f5; padding: 15px; border-radius: 8px;
+        }
+        .field-date { flex: 1 1 160px; }
+        .field-time-range { flex: 2 1 220px; display: flex; align-items: center; gap: 10px; }
+        .field-time-range select { flex: 1; }
+        .field-btn { flex: 0 0 auto; }
+
+        button.btn-add {
+            background-color: #2c3e50; color: white; border: none; padding: 0 25px;
+            height: 44px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap;
+        }
+        
+        @media (max-width: 500px) {
+            .date-adder { flex-direction: column; align-items: stretch; gap: 15px; }
+            .field-date, .field-time-range, .field-btn { flex: 0 0 auto; width: 100%; }
+            .field-time-range { gap: 8px; }
+            .field-time-range div:nth-child(2) { padding-top: 0 !important; padding: 0 5px; }
+            button.btn-add { width: 100%; margin-top: 5px; }
+        }
+
+        button.btn-create {
+            width: 100%; background-color: #28a745; color: white; border: none;
+            padding: 15px; border-radius: 4px; font-size: 1.1rem; font-weight: bold;
+            cursor: pointer; margin-top: 20px;
+        }
+        button.btn-create:disabled { background-color: #ccc; cursor: not-allowed; }
+        button.btn-create.is-edit { background-color: #007bff; }
+
+        .candidate-list { list-style: none; padding: 0; margin-top: 15px; }
+        .candidate-item {
+            display: flex; justify-content: space-between; background: white;
+            border-bottom: 1px solid #eee; padding: 10px; align-items: center;
+        }
+        .btn-delete {
+            color: #dc3545; background: none; border: 1px solid #dc3545;
+            border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem;
+            white-space: nowrap; margin-left: 10px;
+        }
+
+        .preview-area { margin-top: 30px; }
+        .preview-table { width: 100%; border-collapse: collapse; background: white; font-size: 0.85rem; }
+        .preview-table th, .preview-table td { border: 1px solid #ddd; padding: 8px; text-align: center; min-width: 40px; }
+        .preview-table th { background: #2c3e50; color: white; }
+        .preview-table td.disabled-cell { background-color: #e9ecef; pointer-events: none; }
+        .preview-table td.active-cell { background-color: #fff; }
+        
+        #resultArea {
+            display: none; margin-top: 30px; background: #d4edda; color: #155724;
+            padding: 20px; border-radius: 8px; border: 1px solid #c3e6cb; word-break: break-all;
+        }
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8); z-index: 999; display: none;
+            justify-content: center; align-items: center; font-weight: bold; color: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">データを読み込んでいます...</div>
+
+    <h1 id="pageTitle">📅 イベント作成</h1>
+    <p style="font-size:0.9rem; color:#666;" id="pageDesc">候補日と時間帯を追加してください。</p>
+
+    <div class="form-card">
+        <div class="input-group">
+            <label>イベント名</label>
+            <input type="text" id="eventTitle" placeholder="例：第3回 開発定例" autocomplete="off" maxlength="100">
+        </div>
+        
+        <div class="input-group">
+            <label>備考・メモ（任意）</label>
+            <textarea id="eventMemo" placeholder="例：会議のテーマは〇〇です。&#13;&#10;所要時間は2時間を予定しています。" maxlength="500" autocomplete="off"></textarea>
+        </div>
+
+        <label>候補日時の追加</label>
+        <div class="date-adder">
+            <div class="field-date">
+                <label style="font-size:0.8rem;">日付</label>
+                <input type="date" id="inputDate">
+            </div>
+            <div class="field-time-range">
+                <div style="flex:1"><label style="font-size:0.8rem;">開始</label><select id="inputStart"></select></div>
+                <div>～</div>
+                <div style="flex:1"><label style="font-size:0.8rem;">終了</label><select id="inputEnd"></select></div>
+            </div>
+            <div class="field-btn">
+                <button class="btn-add" id="btnAdd">追加</button>
+            </div>
+        </div>
+        <ul class="candidate-list" id="candidateList"></ul>
+    </div>
+
+    <div class="preview-area" id="previewArea" style="display:none;">
+        <h3>👀 プレビュー</h3>
+        <div style="overflow-x:auto;"><table class="preview-table" id="previewTable"></table></div>
+    </div>
+
+    <button class="btn-create" id="btnCreate">イベントを作成する</button>
+
+    <div id="resultArea">
+        <strong id="resultTitle">✅ イベントを作成しました！</strong><br>
+        以下のURLをメンバーに共有してください：<br><br>
+        <a href="#" id="shareLink" target="_blank" style="font-weight:bold; font-size:1.2rem;"></a>
+        <br><br>
+        <hr style="border:0; border-top:1px solid #c3e6cb; margin:15px 0;">
+        <span style="font-size:0.9rem;">
+            ✏️ 後から内容を修正したい場合は、このページのURLをブックマークしておいてください：<br>
+            <a href="#" id="editLink" target="_blank"></a>
+        </span>
+    </div>
+
+    <div style="text-align:center; margin: 20px 0; font-size:0.8rem;">
+        <a href="privacy.html" style="color:#888;">プライバシーポリシー</a>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+    <script type="module">
+        // -----------------------------------------------------
+        // ▼▼▼ firebaseConfig をここに貼り付けてください ▼▼▼
+        // -----------------------------------------------------
+        const firebaseConfig = {
+          apiKey: "AIzaSyDjC31VRAcCWdnCtxz4mZMn5F8NAMe5h5o",
+          authDomain: "schedule-4e6db.firebaseapp.com",
+          projectId: "schedule-4e6db",
+          storageBucket: "schedule-4e6db.firebasestorage.app",
+          messagingSenderId: "1030849641074",
+          appId: "1:1030849641074:web:f9285a6b475d7ee540e0eb"
+        };
+        // -----------------------------------------------------
+
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const listEl = document.getElementById('candidateList');
+        const previewArea = document.getElementById('previewArea');
+        const previewTable = document.getElementById('previewTable');
+        const btnAdd = document.getElementById('btnAdd');
+        const btnCreate = document.getElementById('btnCreate');
+        const resultArea = document.getElementById('resultArea');
+        const shareLink = document.getElementById('shareLink');
+        const editLink = document.getElementById('editLink');
+        const titleInput = document.getElementById('eventTitle');
+        const memoInput = document.getElementById('eventMemo'); 
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        // --- 暗号化ユーティリティ ---
+        function generateKey() {
+            const arr = new Uint8Array(32);
+            crypto.getRandomValues(arr);
+            return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        }
+        // --- 暗号化ユーティリティ（IV付き + 旧形式後方互換） ---
+        function encrypt(text, keyHex) {
+            if (!text) return '';
+            const key = CryptoJS.enc.Hex.parse(keyHex);
+            const iv = CryptoJS.lib.WordArray.random(16);
+            const encrypted = CryptoJS.AES.encrypt(text, key, { iv: iv });
+            return iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.toString();
+        }
+        function decrypt(cipherText, keyHex) {
+            if (!cipherText) return '';
+            try {
+                if (cipherText.includes(':')) {
+                    const [ivHex, ct] = cipherText.split(':');
+                    const key = CryptoJS.enc.Hex.parse(keyHex);
+                    const iv = CryptoJS.enc.Hex.parse(ivHex);
+                    const bytes = CryptoJS.AES.decrypt(ct, key, { iv: iv });
+                    return bytes.toString(CryptoJS.enc.Utf8);
+                }
+                const bytes = CryptoJS.AES.decrypt(cipherText, keyHex);
+                return bytes.toString(CryptoJS.enc.Utf8);
+            } catch (e) { return cipherText; }
+        }
+        function generateToken() {
+            const arr = new Uint8Array(32);
+            crypto.getRandomValues(arr);
+            return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        }
+        async function hashToken(token) {
+            const encoded = new TextEncoder().encode(token);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+            return Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+        function getKeyFromHash() {
+            const hash = window.location.hash;
+            const match = hash.match(/key=([^&]+)/);
+            return match ? match[1] : null;
+        }
+
+        // URLパラメータ判定
+        const urlParams = new URLSearchParams(window.location.search);
+        const eventId = urlParams.get('id');
+        const mode = urlParams.get('mode');
+        let encryptionKey = getKeyFromHash() || null;
+
+        let candidates = [];
+        let ownerToken = null;
+        let existingCreatedAt = null;
+
+        // 初期化
+        const startSel = document.getElementById('inputStart');
+        const endSel = document.getElementById('inputEnd');
+        for(let i=0; i<=23; i++) { 
+            const opt = `<option value="${i}">${i}:00</option>`;
+            startSel.innerHTML += opt; endSel.innerHTML += opt;
+        }
+        startSel.value = "10"; endSel.value = "18";
+        document.getElementById('inputDate').valueAsDate = new Date();
+
+        // 編集モード または リダイレクト判定
+        if (eventId) {
+            if (mode === 'edit') {
+                initEditMode();
+            } else {
+                // 回答ページ(event.html)へ転送（ハッシュも引き継ぐ）
+                const currentUrl = window.location.href;
+                window.location.replace(currentUrl.replace('create.html', 'event.html'));
+            }
+        }
+
+        btnAdd.addEventListener('click', addCandidate);
+        btnCreate.addEventListener('click', saveEvent);
+
+        async function initEditMode() {
+            loadingOverlay.style.display = 'flex';
+            document.title = "イベント編集";
+            document.getElementById('pageTitle').innerText = "📝 イベント編集";
+            document.getElementById('pageDesc').innerText = "内容を修正して「変更を保存」を押してください。";
+            btnCreate.innerText = "変更を保存する";
+            btnCreate.classList.add('is-edit');
+
+            try {
+                const docRef = doc(db, "events", eventId);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    ownerToken = localStorage.getItem(`ownerToken_${eventId}`);
+                    existingCreatedAt = data.createdAt || null;
+                    if (encryptionKey) {
+                        titleInput.value = decrypt(data.title, encryptionKey);
+                        memoInput.value = decrypt(data.memo || '', encryptionKey);
+                    } else {
+                        titleInput.value = data.title;
+                        memoInput.value = data.memo || "";
+                    }
+                    candidates = data.candidates || [];
+                    renderList();
+                    renderPreview();
+                } else {
+                    alert("指定されたイベントが見つかりません。");
+                }
+            } catch (e) {
+                console.error("initEditMode error:", e);
+                alert("データの読み込みに失敗しました。");
+            } finally {
+                loadingOverlay.style.display = 'none';
+            }
+        }
+
+        function addCandidate() {
+            const dateVal = document.getElementById('inputDate').value;
+            const startVal = parseInt(document.getElementById('inputStart').value);
+            const endVal = parseInt(document.getElementById('inputEnd').value);
+
+            if (!dateVal) { alert("日付を選択してください"); return; }
+            
+            // 23時終了の場合は24時とみなすため、start=23, end=23 も許可する
+            if (startVal > endVal) { 
+                alert("終了時間は開始時間より後にしてください"); return; 
+            }
+            if (startVal === endVal && startVal !== 23) {
+                 alert("終了時間は開始時間より後にしてください"); return;
+            }
+
+            candidates.push({ date: dateVal, start: startVal, end: endVal });
+            candidates.sort((a, b) => new Date(a.date) - new Date(b.date));
+            renderList();
+            renderPreview();
+        }
+
+        window.removeCandidate = function(index) {
+            candidates.splice(index, 1);
+            renderList();
+            renderPreview();
+        }
+
+        function renderList() {
+            listEl.innerHTML = "";
+            candidates.forEach((c, index) => {
+                const li = document.createElement('li');
+                li.className = "candidate-item";
+                const span = document.createElement('span');
+                const strong = document.createElement('strong');
+                strong.textContent = c.date;
+                span.appendChild(strong);
+                span.appendChild(document.createTextNode(` ${c.start}:00 ～ ${c.end}:00`));
+                const btn = document.createElement('button');
+                btn.className = "btn-delete";
+                btn.textContent = "削除";
+                btn.addEventListener('click', () => window.removeCandidate(index));
+                li.appendChild(span);
+                li.appendChild(btn);
+                listEl.appendChild(li);
+            });
+        }
+
+        function renderPreview() {
+            if (candidates.length === 0) { previewArea.style.display = 'none'; return; }
+            previewArea.style.display = 'block';
+
+            let minStart = 24, maxEnd = 0;
+            const uniqueDates = [...new Set(candidates.map(c => c.date))];
+            
+            candidates.forEach(c => { 
+                if (c.start < minStart) minStart = c.start;
+                // 終了が23時なら、計算上は24時まで枠を広げる
+                let effectiveEnd = (c.end === 23) ? 24 : c.end;
+                if (effectiveEnd > maxEnd) maxEnd = effectiveEnd;
+            });
+
+            let html = `<thead><tr><th>時間</th>`;
+            uniqueDates.forEach(d => {
+                const dateStr = new Date(d).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric', weekday:'short'});
+                html += `<th>${escapeHtml(dateStr)}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            for (let t = minStart; t < maxEnd; t++) {
+                html += `<tr><th>${t}:00</th>`;
+                uniqueDates.forEach(date => {
+                    const isActive = candidates.some(c => {
+                        let effectiveEnd = (c.end === 23) ? 24 : c.end;
+                        return c.date === date && t >= c.start && t < effectiveEnd;
+                    });
+                    
+                    if (isActive) html += `<td class="active-cell">◯</td>`;
+                    else html += `<td class="disabled-cell"></td>`;
+                });
+                html += `</tr>`;
+            }
+            html += `</tbody>`;
+            previewTable.innerHTML = html;
+        }
+
+        async function saveEvent() {
+            const title = titleInput.value;
+            const memo = memoInput.value;
+
+            if(!title) { alert("イベント名を入力してください"); return; }
+            if(candidates.length === 0) { alert("候補日時を追加してください"); return; }
+
+            btnCreate.disabled = true;
+            btnCreate.innerText = "処理中...";
+
+            try {
+                if (!eventId && !encryptionKey) {
+                    encryptionKey = generateKey();
+                }
+                if (!ownerToken) {
+                    ownerToken = generateToken();
+                }
+
+                const encTitle = encryptionKey ? encrypt(title, encryptionKey) : title;
+                const encMemo = encryptionKey ? encrypt(memo, encryptionKey) : memo;
+                const ownerTokenHash = await hashToken(ownerToken);
+
+                let targetId = eventId;
+                if (eventId) {
+                    const docRef = doc(db, "events", eventId);
+                    await setDoc(docRef, {
+                        title: encTitle,
+                        memo: encMemo,
+                        candidates: candidates,
+                        ownerTokenHash: ownerTokenHash,
+                        createdAt: existingCreatedAt,
+                        updatedAt: serverTimestamp()
+                    });
+                    document.getElementById('resultTitle').innerText = "✅ イベントを更新しました！";
+                } else {
+                    const colRef = collection(db, "events");
+                    const docRef = await addDoc(colRef, {
+                        title: encTitle,
+                        memo: encMemo,
+                        candidates: candidates,
+                        ownerTokenHash: ownerTokenHash,
+                        createdAt: serverTimestamp()
+                    });
+                    targetId = docRef.id;
+                }
+                localStorage.setItem(`ownerToken_${targetId}`, ownerToken);
+
+                resultArea.style.display = "block";
+
+                const currentUrl = window.location.href.split('#')[0];
+                let baseUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/')) + '/';
+                if (baseUrl.includes('create.html')) { baseUrl = baseUrl.replace('create.html', ''); }
+
+                const keyHash = encryptionKey ? "#key=" + encryptionKey : "";
+                const answerPageUrl = baseUrl + "event.html?id=" + targetId + keyHash;
+                shareLink.href = answerPageUrl;
+                shareLink.innerText = answerPageUrl;
+
+                const editPageUrl = baseUrl + "create.html?id=" + targetId + "&mode=edit" + keyHash;
+                editLink.href = editPageUrl;
+                editLink.innerText = editPageUrl;
+
+                document.querySelector('.form-card').style.display = 'none';
+                btnCreate.style.display = 'none';
+                previewArea.style.display = 'none';
+                document.querySelector('h1').innerText = eventId ? "🎉 更新完了" : "🎉 作成完了";
+
+            } catch (e) {
+                console.error("saveEvent error:", e);
+                alert("エラーが発生しました。通信環境を確認してください。");
+                btnCreate.disabled = false;
+                btnCreate.innerText = eventId ? "変更を保存する" : "イベントを作成する";
+            }
+        }
+    </script>
+</body>
+</html>
